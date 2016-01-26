@@ -15,4 +15,4 @@ class InitializationTests(unittest.TestCase):
         try:
             import dphutils
         except ImportError:
-            self.fail("Was not able to import the peaks package")
+            self.fail("Was not able to import the dphutils package")
