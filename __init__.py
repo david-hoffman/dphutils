@@ -59,7 +59,9 @@ def radial_profile(data, center):
 
     y, x = np.indices((data.shape))
 
-    r = np.sqrt((x - center[0])**2 + (y - center[1])**2)
+    y0, x0 = center
+
+    r = np.sqrt((x - x0)**2 + (y - y0)**2)
     r = r.astype(np.int)
 
     tbin = np.bincount(r.ravel(), data.ravel())
@@ -409,7 +411,9 @@ class Pupil(object):
         #initialize pupil
 
     def gen_kr(self):
-        k = np.linspace(-self.k_max,self.k_max, self.size)
+        #we're generating complex data in k-space which means the total bandwidth
+        #is k_max, but the positive max is half that
+        k = np.linspace(-self.k_max/2,self.k_max/2, self.size)
 
         kyy, kxx = np.meshgrid(k,k)
 
