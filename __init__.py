@@ -7,6 +7,26 @@ This is for small utility functions that don't have a proper home yet
 import numpy as np
 from scipy.fftpack import ifftshift, fftshift, fftn, ifftn
 
+def scale(data):
+    '''
+    Scales data to 0 to 1 range
+
+    Examples
+    --------
+    >>> from numpy.random import randn
+    >>> a = randn(10)
+    >>> b = scale(a)
+    >>> b.max()
+    1.0
+    >>> b.min()
+    0.0
+    '''
+
+    dmin = data.min()
+    dmax = data.max()
+
+    return (data-dmin)/(dmax-dmin)
+
 def scale_uint16(data):
     '''
     Scales data to uint16 range
@@ -26,12 +46,7 @@ def scale_uint16(data):
     0
     '''
 
-    dmin = data.min()
-    dmax = data.max()
-
-    scaled_data = (data-dmin)/(dmax-dmin)
-
-    return (scaled_data*(2**16-1)).astype('uint16')
+    return (scale(data)*(2**16-1)).astype('uint16')
 
 def radial_profile(data, center):
     '''
