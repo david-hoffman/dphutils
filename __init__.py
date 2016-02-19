@@ -5,7 +5,8 @@ This is for small utility functions that don't have a proper home yet
 '''
 
 import numpy as np
-from scipy.fftpack import ifftshift, fftshift, fftn, ifftn
+from scipy.fftpack import ifftshift, fftshift, fftn
+
 
 def scale(data):
     '''
@@ -27,6 +28,7 @@ def scale(data):
 
     return (data-dmin)/(dmax-dmin)
 
+
 def scale_uint16(data):
     '''
     Scales data to uint16 range
@@ -47,6 +49,7 @@ def scale_uint16(data):
     '''
 
     return (scale(data)*(2**16-1)).astype('uint16')
+
 
 def radial_profile(data, center):
     '''
@@ -119,19 +122,20 @@ def slice_maker(y0, x0, width):
     [slice(18, 43, None), slice(8, 33, None)]
     '''
 
-    #calculate the start and end
+    # calculate the start and end
     half1 = width//2
-    #we need two halves for uneven widths
+    # we need two halves for uneven widths
     half2 = width-half1
     ystart = y0 - half1
     xstart = x0 - half1
     yend = y0 + half2
     xend = x0 + half2
 
-    toreturn = [slice(ystart,yend), slice(xstart, xend)]
+    toreturn = [slice(ystart, yend), slice(xstart, xend)]
 
-    #return a list of slices
+    # return a list of slices
     return toreturn
+
 
 def nextpow2(n):
     '''
@@ -157,7 +161,8 @@ def nextpow2(n):
 
     return 1 << (n-1).bit_length()
 
-def fft_pad(array, pad_width = None, mode = 'median', **kwargs):
+
+def fft_pad(array, pad_width=None, mode='median', **kwargs):
     '''
     Parameters
     ----------
@@ -291,11 +296,11 @@ def fft_pad(array, pad_width = None, mode = 'median', **kwargs):
 
 
     '''
-    #pull the old shape
+    # pull the old shape
     oldshape = array.shape
 
     if pad_width is None:
-        #update each dimenstion to next power of two
+        # update each dimenstion to next power of two
         newshape = tuple([nextpow2(n) for n in oldshape])
     else:
         if isinstance(pad_width, int):
@@ -303,11 +308,12 @@ def fft_pad(array, pad_width = None, mode = 'median', **kwargs):
         else:
             newshape = tuple(pad_width)
 
-    #generate pad widths from new shape
+    # generate pad widths from new shape
 
-    padding = tuple([_calc_pad(o,n) for o,n in zip(oldshape, newshape)])
+    padding = tuple([_calc_pad(o, n) for o, n in zip(oldshape, newshape)])
 
-    return np.pad(array, padding, mode = mode, **kwargs)
+    return np.pad(array, padding, mode=mode, **kwargs)
+
 
 def _calc_pad(oldnum, newnum):
     '''
@@ -327,11 +333,11 @@ def _calc_pad(oldnum, newnum):
     (4, 3)
     '''
 
-    #how much do we need to add?
+    # how much do we need to add?
     width = newnum-oldnum
-    #calculate one side
+    # calculate one side
     pad1 = width//2
-    #calculate the other
+    # calculate the other
     pad2 = width-pad1
 
     return (pad2, pad1)
@@ -401,6 +407,7 @@ array([[10, 10, 10, 10, 10, 10, 10],
        [10, 10, 10, 10, 10, 10, 10]])
 '''
 
+
 class Pupil(object):
 
     '''
@@ -413,52 +420,55 @@ class Pupil(object):
     Journal of Microscopy 2004, 216 (1), 32–48.](dx.doi.org/10.1111/j.0022-2720.2004.01393.x)
     '''
 
-    def __init__(self, k_max = 1/97.5, wl = 600, NA = 0.85, n = 1.0, size = 512):
-        #We'll be doing a lot of work in k-space so we need to know kmax, which is inverse pixel size
-        #all dimensional units are in nanometer
-        #Create attributes k_max
+    def __init__(self, k_max=1/97.5, wl=600, NA=0.85, n=1.0, size=512):
+        # We'll be doing a lot of work in k-space so we need to know kmax,
+        # which is inverse pixel size. All dimensional units are in nanometer
+        # Create attributes k_max
         self.k_max = k_max
         self.wl = wl
         self.NA = NA
         self.n = n
         self.size = size
         self.gen_kr()
-        #initialize pupil
+        # initialize pupil
 
     def gen_kr(self):
-        #we're generating complex data in k-space which means the total bandwidth
-        #is k_max, but the positive max is half that
-        k = np.linspace(-self.k_max/2,self.k_max/2, self.size)
+        # we're generating complex data in k-space which means the total
+        # bandwidth is k_max, but the positive max is half that
+        k = np.linspace(-self.k_max/2, self.k_max/2, self.size)
 
-        kyy, kxx = np.meshgrid(k,k)
+        kyy, kxx = np.meshgrid(k, k)
 
-        kr = np.sqrt(kxx**2 + kyy**2);
+        kr = np.sqrt(kxx**2 + kyy**2)
 
         self.kr = kr
-        self.phi = np.arctan2(kyy,kxx)#Azimuthal angle
+        self.phi = np.arctan2(kyy, kxx)  # Azimuthal angle
 
     def gen_pupil(self):
         '''
         Generate ideal pupil function
         '''
 
-        #we'll be using the distance from zero in a lot of cases, so precompute that
+        # we'll be using the distance from zero in a lot of cases, precompute
         self.gen_kr()
         kr = self.kr
 
-        #define the diffraction limit
-        #remember we're working with _coherent_ data _not_ intensity, so drop the factor of 2
+        # define the diffraction limit
+        # remember we're working with _coherent_ data _not_ intensity,
+        # so drop the factor of 2
         diff_limit = self.NA/self.wl
 
-        #return a circle of intensity 1 over the ideal passband of the objective
-        #make sure data is complex
+        # return a circle of intensity 1 over the ideal passband of the
+        # objective make sure data is complex
         self.pupil = (kr < diff_limit).astype(complex)
 
-    def gen_psf(self,zrange, dipoles = 'total'):
+    def gen_psf(self, zrange, dipoles='total'):
         '''
-        A function that generates a point spread function over the desired `zrange` from the given pupil
+        A function that generates a point spread function over the desired
+        `zrange` from the given pupil
 
-        It is assumed that the `pupil` has indices ordered as (y, x) to be consistent with image data conventions
+        It is assumed that the `pupil` has indices ordered as (y, x) to be
+        consistent with image data conventions
 
         Parameters
         ---
@@ -472,7 +482,7 @@ class Pupil(object):
         self.gen_pupil()
 
         kr = self.kr
-        #helper function
+        # helper function
 
         wavelength = self.wl
         n = self.n
@@ -481,7 +491,7 @@ class Pupil(object):
 
         my_kz = np.real(np.sqrt((kmag**2 - kr**2).astype(complex)))
 
-        theta = np.arcsin((kr < kmag)*kr/kmag) #Incident angle
+        theta = np.arcsin((kr < kmag)*kr/kmag)  # Incident angle
         phi = self.phi
         Px1 = np.cos(theta) * np.cos(phi)**2 + np.sin(phi)**2
         Px2 = (np.cos(theta)-1) * np.sin(phi) * np.cos(phi)
@@ -495,15 +505,22 @@ class Pupil(object):
             ])
 
         plist = {'total': [Px1, Px2, Py1, Py2, Pz1, Pz2],
-                 'x' : [Px1, Px2],
-                 'y' : [Py1, Py2],
-                 'z' : [Pz1, Pz2],
-                 'none' : [np.ones_like(Px1)]
-                }
+                 'x': [Px1, Px2],
+                 'y': [Py1, Py2],
+                 'z': [Pz1, Pz2],
+                 'none': [np.ones_like(Px1)]
+                 }
 
         pupils = [pupil*p for p in plist[dipoles]]
 
-        PSFa_sub = [ifftshift(fftn(fftshift(pupil,axes=[1,2]),axes=[1,2]),axes=[1,2]) for pupil in pupils]
+        PSFa_sub = [
+                    ifftshift(
+                        fftn(
+                            fftshift(pupil, axes=[1, 2]),
+                            axes=[1, 2]),
+                        axes=[1, 2])
+                    for pupil in pupils
+                    ]
 
         PSFi_sub = [abs(PSF)**2 for PSF in PSFa_sub]
 
@@ -516,4 +533,4 @@ class Pupil(object):
 
     def gen_otf(self, **kwargs):
         raise NotImplementedError
-        #need to implement this function which returns OTFs
+        # need to implement this function which returns OTFs
