@@ -5,8 +5,18 @@ This is for small utility functions that don't have a proper home yet
 '''
 
 import numpy as np
-from scipy.fftpack import ifftshift, fftshift, fftn
-from scipy.signal import fftconvolve, convolve
+import numexpr as ne
+import pyfftw
+import scipy.signal
+from pyfftw.interfaces.scipy_fftpack import ifftshift, fftshift, fftn
+
+# monkey patch
+scipy.signal.signaltools.fftn = pyfftw.interfaces.scipy_fftpack.fftn
+scipy.signal.signaltools.ifftn = pyfftw.interfaces.scipy_fftpack.ifftn
+fftconvolve = scipy.signal.signaltools.fftconvolve
+
+# Turn on the cache for optimum performance
+pyfftw.interfaces.cache.enable()
 
 
 def scale(data, dtype=None):
@@ -553,7 +563,57 @@ class Pupil(object):
         # need to implement this function which returns OTFs
 
 
-def richardson_lucy(image, psf, iterations=50, clip=False):
+# TODO: RL should be refactored into a class structure
+def rl_update(kwargs):
+    '''
+    A function that represents the core rl operation:
+    $u^{(t+1)} = u^{(t)}\cdot\left(\frac{d}{u^{(t)}\otimes p}\otimes \hat{p}\right)$
+    
+    Parameters
+    ----------
+    image : ndarray
+        original image to be deconvolved
+    u_tm1 : ndarray
+        previous
+    u_t
+    u_tp1
+    psf
+    '''
+
+    # unpack kwargs
+    image = kwargs['image']
+    psf = kwargs['psf']
+    y_t = kwargs['y_t']
+    u_t = kwargs['u_t']
+    u_tm1 = kwargs['u_tm1']
+    g_tm1 = kwargs['g_tm1']
+
+    # make mirror psf
+    psf_mirror = psf[::-1, ::-1]
+
+    # calculate RL iteration using the predicted step (y_t)
+    blur = fftconvolve(y_t, psf, 'same')
+    relative_blur = ne.evaluate("image / blur")
+    blur_blur = fftconvolve(relative_blur, psf_mirror, 'same')
+    u_tp1 = ne.evaluate("y_t * blur_blur")
+
+    # enforce non-negativity
+    u_tp1[u_tp1 < 0] = 0
+
+    # update
+    kwargs.update(
+        dict(
+            u_tm2=u_tm1,
+            u_tm1=u_t,
+            u_t=u_tp1,
+            blur=blur_blur,
+            g_tm2=g_tm1,
+            g_tm1=ne.evaluate("u_tp1 - y_t")
+        ))
+
+
+def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
+                    return_full=False):
     """Richardson-Lucy deconvolution.
     Parameters
     ----------
@@ -567,12 +627,10 @@ def richardson_lucy(image, psf, iterations=50, clip=False):
     clip : boolean, optional
        True by default. If true, pixel value of the result above 1 or
        under -1 are thresholded for skimage pipeline compatibility.
-    
     Returns
     -------
     im_deconv : ndarray
        The deconvolved image.
-    
     Examples
     --------
     >>> from skimage import color, data, restoration
@@ -581,39 +639,70 @@ def richardson_lucy(image, psf, iterations=50, clip=False):
     >>> psf = np.ones((5, 5)) / 25
     >>> camera = convolve2d(camera, psf, 'same')
     >>> camera += 0.1 * camera.std() * np.random.standard_normal(camera.shape)
-    >>> deconvolved = restoration.richardson_lucy(camera, psf, 5)
-
+    >>> deconvolved = restoration.richardson_lucy(camera, psf, 5, False)
     References
     ----------
     .. [1] http://en.wikipedia.org/wiki/Richardson%E2%80%93Lucy_deconvolution
+    (2) Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image Restoration
+    Algorithms. Applied Optics 1997, 36 (8), 1766.
+
     """
     # Stolen from the dev branch of skimage because stable branch is slow
-    # compute the times for direct convolution and the fft method. The fft is of
-    # complexity O(N log(N)) for each dimension and the direct method does
-    # straight arithmetic (and is O(n*k) to add n elements k times)
-    direct_time = np.prod(image.shape + psf.shape)
-    fft_time = np.sum([n*np.log(n) for n in image.shape + psf.shape])
-
-    # see whether the fourier transform convolution method or the direct
-    # convolution method is faster (discussed in scikit-image PR #1792)
-    time_ratio = 40.032 * fft_time / direct_time
-
-    if time_ratio <= 1 or len(image.shape) > 2:
-        convolve_method = fftconvolve
-    else:
-        convolve_method = convolve
 
     image = image.astype(np.float)
     psf = psf.astype(np.float)
     im_deconv = 0.5 * np.ones(image.shape)
-    psf_mirror = psf[::-1, ::-1]
+    # Build the dictionary to pass around and update
+    rl_dict = dict(
+        image=image,
+        u_tm2=None,
+        u_tm1=None,
+        g_tm2=None,
+        g_tm1=None,
+        u_t=None,
+        y_t=image,
+        psf=psf
+    )
 
-    for _ in range(iterations):
-        relative_blur = image / convolve_method(im_deconv, psf, 'same')
-        im_deconv *= convolve_method(relative_blur, psf_mirror, 'same')
+    for i in range(iterations):
+        # call the update function
+        rl_update(rl_dict)
+        # initialize alpha to zero
+        alpha = 0
+        # run through the specified iterations
+        if i > 1:
+            # calculate alpha according to 2
+            alpha = (rl_dict['g_tm1'] *
+                     rl_dict['g_tm2']).sum()/(rl_dict['g_tm2']**2).sum()
+            alpha = max(min(alpha, 1), 0)
 
+        # if alpha is positive calculate predicted step
+        if alpha != 0:
+            if prediction_order > 0:
+                # first order correction
+                h1_t = rl_dict['u_t'] - rl_dict['u_tm1']
+                if prediction_order > 1:
+                    # second order correction
+                    h2_t = (rl_dict['u_t'] - 2 * rl_dict['u_tm1'] +
+                            rl_dict['u_tm2'])
+                else:
+                    h2_t = 0
+            else:
+                h1_t = 0
+        else:
+            h2_t = 0
+            h1_t = 0
+
+        rl_dict['y_t'] = rl_dict['u_t'] + alpha*h1_t + alpha**2/2 * h2_t
+        rl_dict['y_t'][rl_dict['y_t'] < 0] = 0
+
+    im_deconv = rl_dict['u_t']
+    
     if clip:
         im_deconv[im_deconv > 1] = 1
         im_deconv[im_deconv < -1] = -1
 
-    return im_deconv
+    if return_full:
+        return rl_dict
+    else:
+        return im_deconv
