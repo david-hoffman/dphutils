@@ -8,13 +8,14 @@ import numpy as np
 import numexpr as ne
 import pyfftw
 from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
-                                            rfftn, irfftn)
+                                         rfftn, irfftn)
+import scipy.signal as sig
 from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
                                       _check_valid_mode_shapes, _centered)
 
 # Turn on the cache for optimum performance
 pyfftw.interfaces.cache.enable()
-
+eps = np.finfo(float).eps
 
 def scale(data, dtype=None):
     '''
@@ -587,12 +588,18 @@ def rl_update(kwargs):
 
     # make mirror psf
     psf_mirror = psf[::-1, ::-1]
-
+    # H = fftn(fftshift(fft_pad(psf, y_t.shape, mode='constant')))
     # calculate RL iteration using the predicted step (y_t)
-    blur = fftconvolve(y_t, psf, 'same')
-    relative_blur = ne.evaluate("image / blur")
-    blur_blur = fftconvolve(relative_blur, psf_mirror, 'same')
-    u_tp1 = ne.evaluate("y_t * blur_blur")
+    reblur = fftconvolve(y_t, psf, 'same', win_func=kwargs['win_func'])
+    # reblur = np.real( ifftn (H * fftn(y_t)))
+    # assert (reblur > eps).all(), 'Reblur 0 or negative'
+    im_ratio = image / reblur
+    # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
+    estimate = fftconvolve(im_ratio, psf_mirror, 'same',
+                           win_func=kwargs['win_func'])
+    # estimate = np.real(ifftn(np.conj(H) * fftn(im_ratio)))
+    # assert (estimate > eps).all(), 'im_ratio 0 or negative'
+    u_tp1 = y_t * estimate
 
     # enforce non-negativity
     u_tp1[u_tp1 < 0] = 0
@@ -603,14 +610,14 @@ def rl_update(kwargs):
             u_tm2=u_tm1,
             u_tm1=u_t,
             u_t=u_tp1,
-            blur=blur_blur,
+            blur=estimate,
             g_tm2=g_tm1,
             g_tm1=ne.evaluate("u_tp1 - y_t")
         ))
 
 
-def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
-                    return_full=False):
+def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
+                    return_full=False, win_func=np.ones):
     """Richardson-Lucy deconvolution.
     Parameters
     ----------
@@ -648,9 +655,9 @@ def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
 
     image = image.astype(np.float)
     psf = psf.astype(np.float)
-    im_deconv = 0.5 * np.ones(image.shape)
     # Build the dictionary to pass around and update
     rl_dict = dict(
+        win_func=win_func,
         image=image,
         u_tm2=None,
         u_tm1=None,
@@ -671,7 +678,13 @@ def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
             # calculate alpha according to 2
             alpha = (rl_dict['g_tm1'] *
                      rl_dict['g_tm2']).sum()/(rl_dict['g_tm2']**2).sum()
+
             alpha = max(min(alpha, 1), 0)
+            if not np.isfinite(alpha):
+                print(alpha)
+                alpha = 0
+            assert alpha >= 0, alpha
+            assert alpha <= 1, alpha
 
         # if alpha is positive calculate predicted step
         if alpha != 0:
@@ -691,7 +704,8 @@ def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
             h1_t = 0
 
         rl_dict['y_t'] = rl_dict['u_t'] + alpha*h1_t + alpha**2/2 * h2_t
-        rl_dict['y_t'][rl_dict['y_t'] < 0] = 0
+        enusure_positive(rl_dict['y_t'])
+        assert (rl_dict['y_t'] >= 0).all()
 
     im_deconv = rl_dict['u_t']
     
@@ -704,7 +718,16 @@ def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
     else:
         return im_deconv
 
-def fftconvolve(in1, in2, mode="full", threads=1):
+
+def enusure_positive(a, eps=0):
+    '''
+    ensure the array is positive with the smallest value equal to eps
+    '''
+    assert np.isfinite(a).all(), 'The array has NaNs'
+    a[a < 0] = eps
+
+
+def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
 
     if in1.ndim == in2.ndim == 0:  # scalar inputs
         return in1 * in2
@@ -717,8 +740,11 @@ def fftconvolve(in1, in2, mode="full", threads=1):
     s2 = np.array(in2.shape)
     complex_result = (np.issubdtype(in1.dtype, complex) or
                       np.issubdtype(in2.dtype, complex))
-    shape = s1 + s2 - 1
-
+    # shape = s1 + s2 - 1
+    # if you double pad the shape, which the above line does then you don't
+    # need to take care of any shifting. But you can just pad to the max size
+    # and fftshift one of the inputs.
+    shape = np.maximum(s1, s2)
     if mode == "valid":
         _check_valid_mode_shapes(s1, s2)
 
@@ -729,9 +755,17 @@ def fftconvolve(in1, in2, mode="full", threads=1):
     # sure we only call rfftn/irfftn from one thread at a time.
     if not complex_result and (_rfft_mt_safe or _rfft_lock.acquire(False)):
         try:
-            ret = (irfftn(rfftn(in1, fshape, threads=threads) *
-                          rfftn(in2, fshape, threads=threads), fshape,
-                          threads=threads)[fslice].copy())
+            winshape = np.array(fshape)
+            winshape[-1] = winshape[-1]//2 + 1
+            ret = (irfftn(
+              rfftn(fft_pad(in1, fshape), threads=threads) *
+              rfftn(
+                fftshift(fft_pad(in2, fshape, mode='constant')),
+                threads=threads) *
+              # need to fftshift the window so that HIGH
+              # frequencies are damped, NOT low frequencies
+              fftshift(win_nd(winshape, win_func)), fshape,
+              threads=threads)[fslice].copy())
         finally:
             if not _rfft_mt_safe:
                 _rfft_lock.release()
@@ -753,3 +787,37 @@ def fftconvolve(in1, in2, mode="full", threads=1):
     else:
         raise ValueError("Acceptable mode flags are 'valid',"
                          " 'same', or 'full'.")
+
+
+def win_nd(size, win_func=sig.hann, **kwargs):
+    '''
+    A function to make a multidimensional version of a window function
+
+    Parameters
+    ----------
+    size : tuple of ints
+        size of the output window
+    win_func : callable
+        Default is the Hanning window
+    **kwargs : key word arguments to be passed to win_func
+
+    Returns
+    -------
+    w : ndarray
+        window function
+    '''
+    ndim = len(size)
+    newshapes = tuple([
+        tuple([1 if i != j else k for i in range(ndim)])
+        for j, k in enumerate(size)])
+
+    # Initialize to return
+    toreturn = 1.0
+
+    # cross product the 1D windows together
+    for newshape in newshapes:
+        toreturn = toreturn * win_func(max(newshape), **kwargs
+                                       ).reshape(newshape)
+
+    # return
+    return toreturn
