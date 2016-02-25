@@ -7,13 +7,10 @@ This is for small utility functions that don't have a proper home yet
 import numpy as np
 import numexpr as ne
 import pyfftw
-import scipy.signal
-from pyfftw.interfaces.scipy_fftpack import ifftshift, fftshift, fftn
-
-# monkey patch
-scipy.signal.signaltools.fftn = pyfftw.interfaces.scipy_fftpack.fftn
-scipy.signal.signaltools.ifftn = pyfftw.interfaces.scipy_fftpack.ifftn
-fftconvolve = scipy.signal.signaltools.fftconvolve
+from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
+                                            rfftn, irfftn)
+from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
+                                      _check_valid_mode_shapes, _centered)
 
 # Turn on the cache for optimum performance
 pyfftw.interfaces.cache.enable()
@@ -706,3 +703,53 @@ def richardson_lucy(image, psf, iterations=50, clip=False, prediction_order=2,
         return rl_dict
     else:
         return im_deconv
+
+def fftconvolve(in1, in2, mode="full", threads=1):
+
+    if in1.ndim == in2.ndim == 0:  # scalar inputs
+        return in1 * in2
+    elif not in1.ndim == in2.ndim:
+        raise ValueError("in1 and in2 should have the same dimensionality")
+    elif in1.size == 0 or in2.size == 0:  # empty arrays
+        return np.array([])
+
+    s1 = np.array(in1.shape)
+    s2 = np.array(in2.shape)
+    complex_result = (np.issubdtype(in1.dtype, complex) or
+                      np.issubdtype(in2.dtype, complex))
+    shape = s1 + s2 - 1
+
+    if mode == "valid":
+        _check_valid_mode_shapes(s1, s2)
+
+    # Speed up FFT by padding to optimal size for FFTPACK
+    fshape = [_next_regular(int(d)) for d in shape]
+    fslice = tuple([slice(0, int(sz)) for sz in shape])
+    # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
+    # sure we only call rfftn/irfftn from one thread at a time.
+    if not complex_result and (_rfft_mt_safe or _rfft_lock.acquire(False)):
+        try:
+            ret = (irfftn(rfftn(in1, fshape, threads=threads) *
+                          rfftn(in2, fshape, threads=threads), fshape,
+                          threads=threads)[fslice].copy())
+        finally:
+            if not _rfft_mt_safe:
+                _rfft_lock.release()
+    else:
+        # If we're here, it's either because we need a complex result, or we
+        # failed to acquire _rfft_lock (meaning rfftn isn't threadsafe and
+        # is already in use by another thread).  In either case, use the
+        # (threadsafe but slower) SciPy complex-FFT routines instead.
+        ret = ifftn(fftn(in1, fshape) * fftn(in2, fshape))[fslice].copy()
+        if not complex_result:
+            ret = ret.real
+
+    if mode == "full":
+        return ret
+    elif mode == "same":
+        return _centered(ret, s1)
+    elif mode == "valid":
+        return _centered(ret, s1 - s2 + 1)
+    else:
+        raise ValueError("Acceptable mode flags are 'valid',"
+                         " 'same', or 'full'.")
