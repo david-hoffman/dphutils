@@ -580,24 +580,19 @@ def rl_update(kwargs):
 
     # unpack kwargs
     image = kwargs['image']
-    psf = kwargs['psf']
+    otf = kwargs['otf']
     y_t = kwargs['y_t']
     u_t = kwargs['u_t']
     u_tm1 = kwargs['u_tm1']
     g_tm1 = kwargs['g_tm1']
 
     # make mirror psf
-    psf_mirror = psf[::-1, ::-1]
-    # H = fftn(fftshift(fft_pad(psf, y_t.shape, mode='constant')))
     # calculate RL iteration using the predicted step (y_t)
-    reblur = fftconvolve(y_t, psf, 'same', win_func=kwargs['win_func'])
-    # reblur = np.real( ifftn (H * fftn(y_t)))
+    reblur = np.real(irfftn(otf * rfftn(y_t)))
     # assert (reblur > eps).all(), 'Reblur 0 or negative'
     im_ratio = image / reblur
     # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-    estimate = fftconvolve(im_ratio, psf_mirror, 'same',
-                           win_func=kwargs['win_func'])
-    # estimate = np.real(ifftn(np.conj(H) * fftn(im_ratio)))
+    estimate = np.real(irfftn(np.conj(otf) * rfftn(im_ratio)))
     # assert (estimate > eps).all(), 'im_ratio 0 or negative'
     u_tp1 = y_t * estimate
 
@@ -617,7 +612,7 @@ def rl_update(kwargs):
 
 
 def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
-                    return_full=False, win_func=np.ones):
+                    return_full=False, win_func=None):
     """Richardson-Lucy deconvolution.
     Parameters
     ----------
@@ -652,12 +647,16 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
 
     """
     # Stolen from the dev branch of skimage because stable branch is slow
-
     image = image.astype(np.float)
     psf = psf.astype(np.float)
+    if win_func is None:
+        window = 1.0
+    else:
+        winshape = np.array(image.shape)
+        winshape[-1] = winshape[-1]//2 + 1
+        window = fftshift(win_nd(winshape, win_func=win_func))
     # Build the dictionary to pass around and update
     rl_dict = dict(
-        win_func=win_func,
         image=image,
         u_tm2=None,
         u_tm1=None,
@@ -665,7 +664,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         g_tm1=None,
         u_t=None,
         y_t=image,
-        psf=psf
+        otf=window*rfftn(fftshift(fft_pad(psf, image.shape, mode='constant')))
     )
 
     for i in range(iterations):
