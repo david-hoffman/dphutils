@@ -614,6 +614,7 @@ def rl_update(kwargs):
 def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
                     return_full=False, win_func=None):
     """Richardson-Lucy deconvolution.
+    
     Parameters
     ----------
     image : ndarray
@@ -626,10 +627,12 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     clip : boolean, optional
        True by default. If true, pixel value of the result above 1 or
        under -1 are thresholded for skimage pipeline compatibility.
+
     Returns
     -------
     im_deconv : ndarray
        The deconvolved image.
+
     Examples
     --------
     >>> from skimage import color, data, restoration
@@ -639,6 +642,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     >>> camera = convolve2d(camera, psf, 'same')
     >>> camera += 0.1 * camera.std() * np.random.standard_normal(camera.shape)
     >>> deconvolved = restoration.richardson_lucy(camera, psf, 5, False)
+
     References
     ----------
     .. [1] http://en.wikipedia.org/wiki/Richardson%E2%80%93Lucy_deconvolution
