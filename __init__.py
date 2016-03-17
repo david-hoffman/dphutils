@@ -17,6 +17,7 @@ from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
 pyfftw.interfaces.cache.enable()
 eps = np.finfo(float).eps
 
+
 def scale(data, dtype=None):
     '''
     Scales data to 0 to 1 range
@@ -613,7 +614,8 @@ def rl_update(kwargs):
 
 def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
                     return_full=False, win_func=None):
-    """Richardson-Lucy deconvolution.
+    """
+    Richardson-Lucy deconvolution.
     
     Parameters
     ----------
@@ -711,7 +713,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         assert (rl_dict['y_t'] >= 0).all()
 
     im_deconv = rl_dict['u_t']
-    
+
     if clip:
         im_deconv[im_deconv > 1] = 1
         im_deconv[im_deconv < -1] = -1
@@ -825,7 +827,8 @@ def win_nd(size, win_func=sig.hann, **kwargs):
     # return
     return toreturn
 
-def auto_adjust(img):
+
+def auto_adjust(img, nbins=256):
     '''
     Python translation of ImageJ autoadjust function
 
@@ -844,20 +847,27 @@ def auto_adjust(img):
     # initialize limit
     limit = pixel_count/10
     # histogram
-    histogram, bins = np.histogram(img.ravel(), bins=256)
+    my_hist, bins = np.histogram(img.ravel(), bins=nbins)
     # set up the threshold
-    auto_threshold = 0
-    if auto_threshold < 10:
-        auto_threshold = 5000
-    else:
-        auto_threshold /= 2
-    threshold = pixel_count/auto_threshold
+    # Below is what ImageJ purportedly does.
+    # auto_threshold = threshold_isodata(img, nbins=bins)
+    # if auto_threshold < 10:
+    #     auto_threshold = 5000
+    # else:
+    #     auto_threshold /= 2
+    # this version, below, seems to converge as nbins increases.
+    threshold = pixel_count/(nbins*16)
     # find the minimum by iterating through the histogram
     # which has 256 bins
-    valid_bins = bins[np.logical_and(histogram < limit, histogram > threshold)]
+    valid_bins = bins[np.logical_and(my_hist < limit, my_hist > threshold)]
     # check if the found limits are valid.
-    vmin = valid_bins[0]
-    vmax = valid_bins[-1]
+    try:
+        vmin = valid_bins[0]
+        vmax = valid_bins[-1]
+    except IndexError:
+        vmin = 0
+        vmax = 0
+
     if vmax <= vmin:
         vmin = img.min()
         vmax = img.max()
