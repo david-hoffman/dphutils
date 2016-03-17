@@ -820,7 +820,46 @@ def win_nd(size, win_func=sig.hann, **kwargs):
     # cross product the 1D windows together
     for newshape in newshapes:
         toreturn = toreturn * win_func(max(newshape), **kwargs
-                                       ).reshape(newshape)
+                                      ).reshape(newshape)
 
     # return
     return toreturn
+
+def auto_adjust(img):
+    '''
+    Python translation of ImageJ autoadjust function
+
+    Parameters
+    ----------
+    img : ndarray
+
+    Returns
+    -------
+    (vmin, vmax) : tuple of numbers
+    '''
+    # calc statistics
+    pixel_count = int(np.array((img.shape)).prod())
+    # get image statistics
+    # ImageStatistics stats = imp.getStatistics()
+    # initialize limit
+    limit = pixel_count/10
+    # histogram
+    histogram, bins = np.histogram(img.ravel(), bins=256)
+    # set up the threshold
+    auto_threshold = 0
+    if auto_threshold < 10:
+        auto_threshold = 5000
+    else:
+        auto_threshold /= 2
+    threshold = pixel_count/auto_threshold
+    # find the minimum by iterating through the histogram
+    # which has 256 bins
+    valid_bins = bins[np.logical_and(histogram < limit, histogram > threshold)]
+    # check if the found limits are valid.
+    vmin = valid_bins[0]
+    vmax = valid_bins[-1]
+    if vmax <= vmin:
+        vmin = img.min()
+        vmax = img.max()
+
+    return (vmin, vmax)
