@@ -6,15 +6,18 @@ This is for small utility functions that don't have a proper home yet
 
 import numpy as np
 import numexpr as ne
-import pyfftw
-from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
-                                         rfftn, irfftn)
 import scipy.signal as sig
 from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
                                       _check_valid_mode_shapes, _centered)
-
-# Turn on the cache for optimum performance
-pyfftw.interfaces.cache.enable()
+try:
+    import pyfftw
+    from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
+                                             rfftn, irfftn)
+    # Turn on the cache for optimum performance
+    pyfftw.interfaces.cache.enable()
+except ImportError:
+    from numpy.fft import (ifftshift, fftshift, fftn, ifftn,
+                           rfftn, irfftn)
 eps = np.finfo(float).eps
 
 
@@ -826,3 +829,18 @@ def win_nd(size, win_func=sig.hann, **kwargs):
 
     # return
     return toreturn
+
+
+def anscombe(data):
+    '''
+    Apply Anscombe transform to data https://en.wikipedia.org/wiki/Anscombe_transform
+    '''
+    return 2*np.sqrt(data + 3/8)
+
+
+def anscombe_inv(data):
+    part0 = 1/4 * data**2
+    part1 = 1/4 * np.sqrt(3/2)/data
+    part2 = -11/8/(data**2)
+    part3 = 5/8*np.sqrt(3/2)/(data**3)
+    return part0 + part1 + part2 + part3 - 1 / 8
