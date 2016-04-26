@@ -18,6 +18,8 @@ try:
 except ImportError:
     from numpy.fft import (ifftshift, fftshift, fftn, ifftn,
                            rfftn, irfftn)
+# import unitary fourier transforms
+from .uft import urfftn, uirfftn
 eps = np.finfo(float).eps
 
 
@@ -592,11 +594,11 @@ def rl_update(kwargs):
 
     # make mirror psf
     # calculate RL iteration using the predicted step (y_t)
-    reblur = np.real(irfftn(otf * rfftn(y_t)))
+    reblur = np.real(uirfftn(otf * urfftn(y_t)))
     # assert (reblur > eps).all(), 'Reblur 0 or negative'
     im_ratio = image / reblur
     # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-    estimate = np.real(irfftn(np.conj(otf) * rfftn(im_ratio)))
+    estimate = np.real(uirfftn(np.conj(otf) * urfftn(im_ratio)))
     # assert (estimate > eps).all(), 'im_ratio 0 or negative'
     u_tp1 = y_t * estimate
 
@@ -673,7 +675,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         g_tm1=None,
         u_t=None,
         y_t=image,
-        otf=window*rfftn(fftshift(fft_pad(psf, image.shape, mode='constant')))
+        otf=window*urfftn(fftshift(fft_pad(psf, image.shape, mode='constant')))
     )
 
     for i in range(iterations):
