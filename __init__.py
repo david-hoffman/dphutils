@@ -7,6 +7,7 @@ This is for small utility functions that don't have a proper home yet
 import numpy as np
 import numexpr as ne
 import scipy.signal as sig
+from scipy.ndimage.fourier import fourier_gaussian
 from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
                                       _check_valid_mode_shapes, _centered)
 try:
@@ -835,14 +836,40 @@ def win_nd(size, win_func=sig.hann, **kwargs):
 
 def anscombe(data):
     '''
-    Apply Anscombe transform to data https://en.wikipedia.org/wiki/Anscombe_transform
+    Apply Anscombe transform to data
+    https://en.wikipedia.org/wiki/Anscombe_transform
     '''
     return 2*np.sqrt(data + 3/8)
 
 
 def anscombe_inv(data):
+    '''
+    Apply inverse Anscombe transform to data
+    https://en.wikipedia.org/wiki/Anscombe_transform
+    '''
     part0 = 1/4 * data**2
     part1 = 1/4 * np.sqrt(3/2)/data
     part2 = -11/8/(data**2)
     part3 = 5/8*np.sqrt(3/2)/(data**3)
     return part0 + part1 + part2 + part3 - 1 / 8
+
+
+def fft_gaussian_filter(img, sigma):
+    '''
+    FFT gaussian convolution
+
+    Parameters
+    ----------
+    img : ndarray
+        Image to convolve with a gaussian kernel
+    sigma : int or sequence
+        The sigma(s) of the gaussian kernel in _real space_
+
+    Returns
+    -------
+    filt_img : ndarray
+        The filtered image
+    '''
+    kimg = rfftn(img)
+    filt_kimg = fourier_gaussian(kimg, sigma, img.shape[-1])
+    return irfftn(filt_kimg)
