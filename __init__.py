@@ -58,7 +58,7 @@ def scale(data, dtype=None):
             tmin = np.finfo(dtype).min
             tmax = np.finfo(dtype).max
 
-    return ((data - dmin)/(dmax - dmin)*(tmax - tmin) + tmin).astype(dtype)
+    return ((data - dmin) / (dmax - dmin) * (tmax - tmin) + tmin).astype(dtype)
 
 
 def scale_uint16(data):
@@ -80,10 +80,10 @@ def scale_uint16(data):
     0
     '''
 
-    return (scale(data)*(2**16-1)).astype('uint16')
+    return (scale(data) * (2**16 - 1)).astype('uint16')
 
 
-def radial_profile(data, center):
+def radial_profile(data, center=None):
     '''
     Take the radial average of a 2D data array
 
@@ -104,23 +104,38 @@ def radial_profile(data, center):
     Examples
     --------
     >>> radial_profile(np.ones((11,11)),(5,5))
-    array([ 1.,  1.,  1.,  1.,  1.,  1.,  1.,  1.])
+    (array([ 1.,  1.,  1.,  1.,  1.,  1.,  1.,  1.]), array([ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.]))
     '''
-
+    # test if the data is complex
+    if np.iscomplexobj(data):
+        # if it is complex, call this function on the real and
+        # imaginary parts and return the complex sum.
+        real_prof, real_std = radial_profile(np.real(data), center)
+        imag_prof, imag_std = radial_profile(np.imag(data), center)
+        return real_prof + imag_prof * 1j, real_std + imag_std * 1j
+    # pull the data shape
     y, x = np.indices((data.shape))
-
+    if center is None:
+        # find the center
+        center = np.array(data.shape) // 2
+    # split the cetner
     y0, x0 = center
-
+    # calculate the radius from center
     r = np.sqrt((x - x0)**2 + (y - y0)**2)
-    r = r.astype(np.int)
-
+    # convert to int
+    r = np.round(r).astype(np.int)
+    # sum the values at equal r
     tbin = np.bincount(r.ravel(), data.ravel())
-
+    # sum the squares at equal r
+    tbin2 = np.bincount(r.ravel(), (data**2).ravel())
+    # find how many equal r's there are
     nr = np.bincount(r.ravel())
-
-    radialprofile = tbin / nr
-
-    return radialprofile
+    # calculate the radial mean
+    radial_mean = tbin / nr
+    # calculate the raidal std
+    radial_std = np.sqrt(tbin2 / nr - radial_mean**2)
+    # return them
+    return radial_mean, radial_std
 
 
 def slice_maker(y0, x0, width):
