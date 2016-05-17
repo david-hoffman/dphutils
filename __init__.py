@@ -170,15 +170,15 @@ def slice_maker(y0, x0, width):
     '''
 
     # calculate the start and end
-    half1 = width//2
+    half1 = width // 2
     # we need two halves for uneven widths
-    half2 = width-half1
+    half2 = width - half1
     ystart = y0 - half1
     xstart = x0 - half1
     yend = y0 + half2
     xend = x0 + half2
-
-    toreturn = [slice(ystart, yend), slice(xstart, xend)]
+    # the max calls are to make slice_maker play nice with edges.
+    toreturn = [slice(max(0, ystart), yend), slice(max(0, xstart), xend)]
 
     # return a list of slices
     return toreturn
