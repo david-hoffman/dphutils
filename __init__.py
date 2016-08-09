@@ -583,12 +583,11 @@ class Pupil(object):
         # need to implement this function which returns OTFs
 
 
-# TODO: RL should be refactored into a class structure
 def rl_update(kwargs):
     '''
     A function that represents the core rl operation:
     $u^{(t+1)} = u^{(t)}\cdot\left(\frac{d}{u^{(t)}\otimes p}\otimes \hat{p}\right)$
-    
+    TODO: This function should be moved to be internal to `richardson_lucy`
     Parameters
     ----------
     image : ndarray
@@ -674,15 +673,18 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
 
     """
     # Stolen from the dev branch of skimage because stable branch is slow
+    # checked against matlab on 20160805 and agrees to within machine precision
     image = image.astype(np.float)
     psf = psf.astype(np.float)
     if win_func is None:
         window = 1.0
     else:
         winshape = np.array(image.shape)
-        winshape[-1] = winshape[-1]//2 + 1
+        winshape[-1] = winshape[-1] // 2 + 1
         window = fftshift(win_nd(winshape, win_func=win_func))
     # Build the dictionary to pass around and update
+    psf_norm = fft_pad(scale(psf), image.shape, mode='constant')
+    psf_norm /= psf_norm.sum()
     rl_dict = dict(
         image=image,
         u_tm2=None,
@@ -691,7 +693,8 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         g_tm1=None,
         u_t=None,
         y_t=image,
-        otf=window*urfftn(fftshift(fft_pad(psf, image.shape, mode='constant')))
+        # below needs to be normalized.
+        otf=window * urfftn(fftshift(psf_norm))
     )
 
     for i in range(iterations):
@@ -703,7 +706,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         if i > 1:
             # calculate alpha according to 2
             alpha = (rl_dict['g_tm1'] *
-                     rl_dict['g_tm2']).sum()/(rl_dict['g_tm2']**2).sum()
+                     rl_dict['g_tm2']).sum() / (rl_dict['g_tm2']**2).sum()
 
             alpha = max(min(alpha, 1), 0)
             if not np.isfinite(alpha):
@@ -729,7 +732,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
             h2_t = 0
             h1_t = 0
 
-        rl_dict['y_t'] = rl_dict['u_t'] + alpha*h1_t + alpha**2/2 * h2_t
+        rl_dict['y_t'] = rl_dict['u_t'] + alpha * h1_t + alpha**2 / 2 * h2_t
         enusure_positive(rl_dict['y_t'])
         assert (rl_dict['y_t'] >= 0).all()
 
