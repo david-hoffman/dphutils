@@ -583,57 +583,8 @@ class Pupil(object):
         # need to implement this function which returns OTFs
 
 
-def rl_update(kwargs):
-    '''
-    A function that represents the core rl operation:
-    $u^{(t+1)} = u^{(t)}\cdot\left(\frac{d}{u^{(t)}\otimes p}\otimes \hat{p}\right)$
-    TODO: This function should be moved to be internal to `richardson_lucy`
-    Parameters
-    ----------
-    image : ndarray
-        original image to be deconvolved
-    u_tm1 : ndarray
-        previous
-    u_t
-    u_tp1
-    psf
-    '''
-
-    # unpack kwargs
-    image = kwargs['image']
-    otf = kwargs['otf']
-    y_t = kwargs['y_t']
-    u_t = kwargs['u_t']
-    u_tm1 = kwargs['u_tm1']
-    g_tm1 = kwargs['g_tm1']
-
-    # make mirror psf
-    # calculate RL iteration using the predicted step (y_t)
-    reblur = np.real(uirfftn(otf * urfftn(y_t)))
-    # assert (reblur > eps).all(), 'Reblur 0 or negative'
-    im_ratio = image / reblur
-    # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-    estimate = np.real(uirfftn(np.conj(otf) * urfftn(im_ratio)))
-    # assert (estimate > eps).all(), 'im_ratio 0 or negative'
-    u_tp1 = y_t * estimate
-
-    # enforce non-negativity
-    u_tp1[u_tp1 < 0] = 0
-
-    # update
-    kwargs.update(
-        dict(
-            u_tm2=u_tm1,
-            u_tm1=u_t,
-            u_t=u_tp1,
-            blur=estimate,
-            g_tm2=g_tm1,
-            g_tm1=ne.evaluate("u_tp1 - y_t")
-        ))
-
-
 def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
-                    return_full=False, win_func=None):
+                    win_func=None):
     """
     Richardson-Lucy deconvolution.
     
@@ -685,28 +636,42 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     # Build the dictionary to pass around and update
     psf_norm = fft_pad(scale(psf), image.shape, mode='constant')
     psf_norm /= psf_norm.sum()
-    rl_dict = dict(
-        image=image,
-        u_tm2=None,
-        u_tm1=None,
-        g_tm2=None,
-        g_tm1=None,
-        u_t=None,
-        y_t=image,
-        # below needs to be normalized.
-        otf=window * urfftn(fftshift(psf_norm))
-    )
+    u_tm2 = None
+    u_tm1 = None
+    g_tm2 = None
+    g_tm1 = None
+    u_t = None
+    y_t = image
+    # below needs to be normalized.
+    otf = window * urfftn(fftshift(psf_norm))
 
     for i in range(iterations):
         # call the update function
-        rl_update(rl_dict)
+        # make mirror psf
+        # calculate RL iteration using the predicted step (y_t)
+        reblur = np.real(uirfftn(otf * urfftn(y_t)))
+        # assert (reblur > eps).all(), 'Reblur 0 or negative'
+        im_ratio = image / reblur
+        # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
+        estimate = np.real(uirfftn(np.conj(otf) * urfftn(im_ratio)))
+        # assert (estimate > eps).all(), 'im_ratio 0 or negative'
+        u_tp1 = y_t * estimate
+
+        # enforce non-negativity
+        u_tp1[u_tp1 < 0] = 0
+
+        # update
+        u_tm2 = u_tm1
+        u_tm1 = u_t
+        u_t = u_tp1
+        g_tm2 = g_tm1
+        g_tm1 = ne.evaluate("u_tp1 - y_t")
         # initialize alpha to zero
         alpha = 0
         # run through the specified iterations
         if i > 1:
             # calculate alpha according to 2
-            alpha = (rl_dict['g_tm1'] *
-                     rl_dict['g_tm2']).sum() / (rl_dict['g_tm2']**2).sum()
+            alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
 
             alpha = max(min(alpha, 1), 0)
             if not np.isfinite(alpha):
@@ -719,11 +684,10 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
         if alpha != 0:
             if prediction_order > 0:
                 # first order correction
-                h1_t = rl_dict['u_t'] - rl_dict['u_tm1']
+                h1_t = u_t - u_tm1
                 if prediction_order > 1:
                     # second order correction
-                    h2_t = (rl_dict['u_t'] - 2 * rl_dict['u_tm1'] +
-                            rl_dict['u_tm2'])
+                    h2_t = (u_t - 2 * u_tm1 + u_tm2)
                 else:
                     h2_t = 0
             else:
@@ -732,20 +696,17 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
             h2_t = 0
             h1_t = 0
 
-        rl_dict['y_t'] = rl_dict['u_t'] + alpha * h1_t + alpha**2 / 2 * h2_t
-        enusure_positive(rl_dict['y_t'])
-        assert (rl_dict['y_t'] >= 0).all()
+        y_t = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
+        enusure_positive(y_t)
+        assert (y_t >= 0).all()
 
-    im_deconv = rl_dict['u_t']
+    im_deconv = u_t
 
     if clip:
         im_deconv[im_deconv > 1] = 1
         im_deconv[im_deconv < -1] = -1
 
-    if return_full:
-        return rl_dict
-    else:
-        return im_deconv
+    return im_deconv
 
 
 def enusure_positive(a, eps=0):
