@@ -203,10 +203,10 @@ def nextpow2(n):
     16
     '''
 
-    if n < 0:
+    if n < 0 or not isinstance(n, int):
         raise ValueError('n must be a positive integer, n = {}'.format(n))
 
-    return 1 << (n-1).bit_length()
+    return 1 << (n - 1).bit_length()
 
 
 def fft_pad(array, pad_width=None, mode='median', **kwargs):
@@ -381,11 +381,11 @@ def _calc_pad(oldnum, newnum):
     '''
 
     # how much do we need to add?
-    width = newnum-oldnum
+    width = newnum - oldnum
     # calculate one side
-    pad1 = width//2
+    pad1 = width // 2
     # calculate the other
-    pad2 = width-pad1
+    pad2 = width - pad1
 
     return (pad2, pad1)
 
@@ -467,7 +467,7 @@ class Pupil(object):
     Journal of Microscopy 2004, 216 (1), 32–48.](dx.doi.org/10.1111/j.0022-2720.2004.01393.x)
     '''
 
-    def __init__(self, k_max=1/97.5, wl=600, NA=0.85, n=1.0, size=512):
+    def __init__(self, k_max=1 / 97.5, wl=600, NA=0.85, n=1.0, size=512):
         # We'll be doing a lot of work in k-space so we need to know kmax,
         # which is inverse pixel size. All dimensional units are in nanometer
         # Create attributes k_max
@@ -482,7 +482,7 @@ class Pupil(object):
     def gen_kr(self):
         # we're generating complex data in k-space which means the total
         # bandwidth is k_max, but the positive max is half that
-        k = np.linspace(-self.k_max/2, self.k_max/2, self.size)
+        k = np.linspace(-self.k_max / 2, self.k_max / 2, self.size)
 
         kyy, kxx = np.meshgrid(k, k)
 
@@ -503,7 +503,7 @@ class Pupil(object):
         # define the diffraction limit
         # remember we're working with _coherent_ data _not_ intensity,
         # so drop the factor of 2
-        diff_limit = self.NA/self.wl
+        diff_limit = self.NA / self.wl
 
         # return a circle of intensity 1 over the ideal passband of the
         # objective make sure data is complex
@@ -534,22 +534,22 @@ class Pupil(object):
         wavelength = self.wl
         n = self.n
 
-        kmag = n/wavelength
+        kmag = n / wavelength
 
         my_kz = np.real(np.sqrt((kmag**2 - kr**2).astype(complex)))
 
-        theta = np.arcsin((kr < kmag)*kr/kmag)  # Incident angle
+        theta = np.arcsin((kr < kmag) * kr / kmag)  # Incident angle
         phi = self.phi
         Px1 = np.cos(theta) * np.cos(phi)**2 + np.sin(phi)**2
-        Px2 = (np.cos(theta)-1) * np.sin(phi) * np.cos(phi)
+        Px2 = (np.cos(theta) - 1) * np.sin(phi) * np.cos(phi)
         Py1 = Px2
         Py2 = np.cos(theta) * np.sin(phi)**2 + np.cos(phi)**2
         Pz1 = np.sin(theta) * np.cos(phi)
         Pz2 = np.sin(theta) * np.sin(phi)
 
         pupil = np.array([
-                self.pupil*np.exp(2*np.pi*1j*my_kz*z) for z in zrange
-            ])
+            self.pupil * np.exp(2 * np.pi * 1j * my_kz * z) for z in zrange
+        ])
 
         plist = {'total': [Px1, Px2, Py1, Py2, Pz1, Pz2],
                  'x': [Px1, Px2],
@@ -558,16 +558,16 @@ class Pupil(object):
                  'none': [np.ones_like(Px1)]
                  }
 
-        pupils = [pupil*p for p in plist[dipoles]]
+        pupils = [pupil * p for p in plist[dipoles]]
 
         PSFa_sub = [
-                    ifftshift(
-                        fftn(
-                            fftshift(pupil, axes=[1, 2]),
-                            axes=[1, 2]),
-                        axes=[1, 2])
-                    for pupil in pupils
-                    ]
+            ifftshift(
+                fftn(
+                    fftshift(pupil, axes=[1, 2]),
+                    axes=[1, 2]),
+                axes=[1, 2])
+            for pupil in pupils
+        ]
 
         PSFi_sub = [abs(PSF)**2 for PSF in PSFa_sub]
 
@@ -587,7 +587,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
                     win_func=None):
     """
     Richardson-Lucy deconvolution.
-    
+
     Parameters
     ----------
     image : ndarray
@@ -746,16 +746,16 @@ def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
     if not complex_result and (_rfft_mt_safe or _rfft_lock.acquire(False)):
         try:
             winshape = np.array(fshape)
-            winshape[-1] = winshape[-1]//2 + 1
+            winshape[-1] = winshape[-1] // 2 + 1
             ret = (irfftn(
-              rfftn(fft_pad(in1, fshape), threads=threads) *
-              rfftn(
-                fftshift(fft_pad(in2, fshape, mode='constant')),
-                threads=threads) *
-              # need to fftshift the window so that HIGH
-              # frequencies are damped, NOT low frequencies
-              fftshift(win_nd(winshape, win_func)), fshape,
-              threads=threads)[fslice].copy())
+                rfftn(fft_pad(in1, fshape), threads=threads) *
+                rfftn(
+                    fftshift(fft_pad(in2, fshape, mode='constant')),
+                    threads=threads) *
+                # need to fftshift the window so that HIGH
+                # frequencies are damped, NOT low frequencies
+                fftshift(win_nd(winshape, win_func)), fshape,
+                threads=threads)[fslice].copy())
         finally:
             if not _rfft_mt_safe:
                 _rfft_lock.release()
@@ -807,7 +807,7 @@ def win_nd(size, win_func=sig.hann, **kwargs):
     # cross product the 1D windows together
     for newshape in newshapes:
         toreturn = toreturn * win_func(max(newshape), **kwargs
-                                      ).reshape(newshape)
+                                       ).reshape(newshape)
 
     # return
     return toreturn
@@ -818,7 +818,7 @@ def anscombe(data):
     Apply Anscombe transform to data
     https://en.wikipedia.org/wiki/Anscombe_transform
     '''
-    return 2*np.sqrt(data + 3/8)
+    return 2 * np.sqrt(data + 3 / 8)
 
 
 def anscombe_inv(data):
@@ -826,10 +826,10 @@ def anscombe_inv(data):
     Apply inverse Anscombe transform to data
     https://en.wikipedia.org/wiki/Anscombe_transform
     '''
-    part0 = 1/4 * data**2
-    part1 = 1/4 * np.sqrt(3/2)/data
-    part2 = -11/8/(data**2)
-    part3 = 5/8*np.sqrt(3/2)/(data**3)
+    part0 = 1 / 4 * data**2
+    part1 = 1 / 4 * np.sqrt(3 / 2) / data
+    part2 = -11 / 8 / (data**2)
+    part3 = 5 / 8 * np.sqrt(3 / 2) / (data**3)
     return part0 + part1 + part2 + part3 - 1 / 8
 
 
