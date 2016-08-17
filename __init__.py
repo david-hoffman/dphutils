@@ -131,8 +131,10 @@ def radial_profile(data, center=None, binsize=1.0):
     # find how many equal r's there are
     nr = np.bincount(r.ravel())
     # calculate the radial mean
+    # NOTE: because nr could be zero (for missing bins) the results will
+    # have NaN for binsize != 1
     radial_mean = tbin / nr
-    # calculate the raidal std
+    # calculate the radial std
     radial_std = np.sqrt(tbin2 / nr - radial_mean**2)
     # return them
     return radial_mean, radial_std
