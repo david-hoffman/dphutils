@@ -83,7 +83,7 @@ def scale_uint16(data):
     return (scale(data) * (2**16 - 1)).astype('uint16')
 
 
-def radial_profile(data, center=None):
+def radial_profile(data, center=None, binsize=1.0):
     '''
     Take the radial average of a 2D data array
 
@@ -110,20 +110,20 @@ def radial_profile(data, center=None):
     if np.iscomplexobj(data):
         # if it is complex, call this function on the real and
         # imaginary parts and return the complex sum.
-        real_prof, real_std = radial_profile(np.real(data), center)
-        imag_prof, imag_std = radial_profile(np.imag(data), center)
+        real_prof, real_std = radial_profile(np.real(data), center, binsize)
+        imag_prof, imag_std = radial_profile(np.imag(data), center, binsize)
         return real_prof + imag_prof * 1j, real_std + imag_std * 1j
     # pull the data shape
     y, x = np.indices((data.shape))
     if center is None:
         # find the center
-        center = np.array(data.shape) // 2
+        center = np.array(data.shape) / 2
     # split the cetner
     y0, x0 = center
     # calculate the radius from center
     r = np.sqrt((x - x0)**2 + (y - y0)**2)
     # convert to int
-    r = np.round(r).astype(np.int)
+    r = np.round(r / binsize).astype(np.int)
     # sum the values at equal r
     tbin = np.bincount(r.ravel(), data.ravel())
     # sum the squares at equal r
