@@ -171,7 +171,8 @@ def slice_maker(y0, x0, width):
     >>> slice_maker(30,20,25)
     [slice(18, 43, None), slice(8, 33, None)]
     '''
-
+    # ensure integers
+    y0, x0 = int(y0), int(x0)
     # calculate the start and end
     half1 = width // 2
     # we need two halves for uneven widths
