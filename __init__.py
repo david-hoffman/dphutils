@@ -8,8 +8,9 @@ import numpy as np
 import numexpr as ne
 import scipy.signal as sig
 from scipy.ndimage.fourier import fourier_gaussian
-from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe, _next_regular,
-                                      _check_valid_mode_shapes, _centered)
+from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe,
+                                      _inputs_swap_needed, _centered)
+from scipy.fftpack.helper import next_fast_len
 try:
     import pyfftw
     from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
@@ -737,11 +738,12 @@ def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
     # need to take care of any shifting. But you can just pad to the max size
     # and fftshift one of the inputs.
     shape = np.maximum(s1, s2)
-    if mode == "valid":
-        _check_valid_mode_shapes(s1, s2)
+    if _inputs_swap_needed(mode, s1, s2):
+        # Convolution is commutative; order doesn't have any effect on output
+        in1, s1, in2, s2 = in2, s2, in1, s1
 
     # Speed up FFT by padding to optimal size for FFTPACK
-    fshape = [_next_regular(int(d)) for d in shape]
+    fshape = [next_fast_len(int(d)) for d in shape]
     fslice = tuple([slice(0, int(sz)) for sz in shape])
     # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
     # sure we only call rfftn/irfftn from one thread at a time.
