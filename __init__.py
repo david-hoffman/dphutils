@@ -45,8 +45,8 @@ def scale(data, dtype=None):
     0
     '''
 
-    dmin = data.min()
-    dmax = data.max()
+    dmin = np.nanmin(data)
+    dmax = np.nanmax(data)
 
     if dtype is None:
         tmin = 0.0
