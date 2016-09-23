@@ -1,10 +1,10 @@
 from nose.tools import *
-import os
 import numpy as np
 import unittest
 
-#import the package to test
+# import the package to test
 from dphutils import *
+
 
 class TestFFTPad(unittest.TestCase):
 
@@ -46,7 +46,7 @@ class TestFFTPad(unittest.TestCase):
         oldshape = (10, 20, 30)
         data = np.random.randn(*oldshape)
         newsize = 50
-        newdata = fft_pad(data,newsize)
+        newdata = fft_pad(data, newsize)
 
         assert np.all(newsize == np.array(newdata.shape))
 
@@ -57,7 +57,7 @@ class TestFFTPad(unittest.TestCase):
         oldshape = (10, 20, 30, 40)
         data = np.random.randn(*oldshape)
         newsize = (50, 40, 30, 100)
-        newdata = fft_pad(data,newsize)
+        newdata = fft_pad(data, newsize)
 
         assert np.all(newsize == np.array(newdata.shape))
 
@@ -67,23 +67,3 @@ def test_nextpow2_arg():
     Tests whether `nextpow2` rejects negative integers
     '''
     assert_raises(ValueError, nextpow2, -2)
-
-class TestPupil(unittest.TestCase):
-
-    def setUp(self):
-        self.pupil = Pupil()
-
-    def test_size(self):
-        '''
-        Make sure when size is changed the output changes accordingly
-        '''
-
-        pupil = self.pupil
-
-        pupil.size = 128
-        pupil.gen_psf([-1,0,1])
-        assert_tuple_equal( pupil.PSFi.shape, (3, 128, 128) )
-
-        pupil.size = 512
-        pupil.gen_psf([0])
-        assert_tuple_equal( pupil.PSFi.shape, (1, 512, 512) )
