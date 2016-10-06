@@ -17,7 +17,7 @@ class TestFFTPad(unittest.TestCase):
         '''
         oldsize = 10
         oldshape = (oldsize, oldsize)
-        data = np.random.randn(*oldshape)
+        data = np.zeros(oldshape)
         newsize = nextpow2(oldsize)
         newdata = fft_pad(data)
 
@@ -31,7 +31,7 @@ class TestFFTPad(unittest.TestCase):
         '''
         oldsize = 11
         oldshape = (oldsize, oldsize)
-        data = np.random.randn(*oldshape)
+        data = np.zeros(oldshape)
         newsize = nextpow2(oldsize)
         newdata = fft_pad(data)
 

@@ -1,8 +1,11 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-'''
+# dphutils.py
+"""
 This is for small utility functions that don't have a proper home yet
-'''
+
+Copyright (c) 2016, David Hoffman
+"""
 
 import numpy as np
 import numexpr as ne
@@ -349,20 +352,16 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
     '''
     # pull the old shape
     oldshape = array.shape
-
     if pad_width is None:
         # update each dimenstion to next power of two
-        newshape = tuple([nextpow2(n) for n in oldshape])
+        newshape = tuple(nextpow2(n) for n in oldshape)
     else:
         if isinstance(pad_width, int):
-            newshape = tuple([pad_width for n in oldshape])
+            newshape = tuple(pad_width for n in oldshape)
         else:
             newshape = tuple(pad_width)
-
     # generate pad widths from new shape
-
-    padding = tuple([_calc_pad(o, n) for o, n in zip(oldshape, newshape)])
-
+    padding = tuple(_calc_pad(o, n) for o, n in zip(oldshape, newshape))
     return np.pad(array, padding, mode=mode, **kwargs)
 
 
@@ -390,8 +389,8 @@ def _calc_pad(oldnum, newnum):
     pad1 = width // 2
     # calculate the other
     pad2 = width - pad1
-
     return (pad2, pad1)
+
 
 '''
 Examples
