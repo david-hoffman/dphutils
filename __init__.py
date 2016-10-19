@@ -16,12 +16,12 @@ from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe,
 from scipy.fftpack.helper import next_fast_len
 try:
     import pyfftw
-    from pyfftw.interfaces.numpy_fft import (ifftshift, fftshift, fftn, ifftn,
+    from pyfftw.interfaces.numpy_fft import (fftshift, ifftshift, fftn, ifftn,
                                              rfftn, irfftn)
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
-    from numpy.fft import (ifftshift, fftshift, fftn, ifftn,
+    from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn)
 # import unitary fourier transforms
 from .uft import urfftn, uirfftn
@@ -507,7 +507,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     else:
         winshape = np.array(image.shape)
         winshape[-1] = winshape[-1] // 2 + 1
-        window = fftshift(win_nd(winshape, win_func=win_func))
+        window = ifftshift(win_nd(winshape, win_func=win_func))
     # Build the dictionary to pass around and update
     psf_norm = fft_pad(scale(psf), image.shape, mode='constant')
     psf_norm /= psf_norm.sum()
@@ -518,7 +518,7 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     u_t = None
     y_t = image
     # below needs to be normalized.
-    otf = window * urfftn(fftshift(psf_norm))
+    otf = window * urfftn(ifftshift(psf_norm))
 
     for i in range(iterations):
         # call the update function
@@ -608,7 +608,7 @@ def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
     # shape = s1 + s2 - 1
     # if you double pad the shape, which the above line does then you don't
     # need to take care of any shifting. But you can just pad to the max size
-    # and fftshift one of the inputs.
+    # and ifftshift one of the inputs.
     shape = np.maximum(s1, s2)
     if _inputs_swap_needed(mode, s1, s2):
         # Convolution is commutative; order doesn't have any effect on output
@@ -626,11 +626,11 @@ def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
             ret = (irfftn(
                 rfftn(fft_pad(in1, fshape), threads=threads) *
                 rfftn(
-                    fftshift(fft_pad(in2, fshape, mode='constant')),
+                    ifftshift(fft_pad(in2, fshape, mode='constant')),
                     threads=threads) *
-                # need to fftshift the window so that HIGH
+                # need to ifftshift the window so that HIGH
                 # frequencies are damped, NOT low frequencies
-                fftshift(win_nd(winshape, win_func)), fshape,
+                ifftshift(win_nd(winshape, win_func)), fshape,
                 threads=threads)[fslice].copy())
         finally:
             if not _rfft_mt_safe:
