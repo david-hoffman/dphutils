@@ -312,6 +312,8 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
     # checked against matlab on 20160805 and agrees to within machine precision
     image = image.astype(np.float)
     psf = psf.astype(np.float)
+    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
+                                    " of dimensions")
     if win_func is None:
         window = 1.0
     else:
