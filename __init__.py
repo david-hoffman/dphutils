@@ -9,27 +9,28 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import numexpr as ne
-import scipy.signal as sig
+import scipy as sp
 from scipy.ndimage.fourier import fourier_gaussian
-from scipy.signal.signaltools import (_rfft_lock, _rfft_mt_safe,
-                                      _inputs_swap_needed, _centered)
-from scipy.fftpack.helper import next_fast_len
+from scipy.ndimage._ni_support import _normalize_sequence
+from scipy.signal import signaltools as sig
 try:
     import pyfftw
     from pyfftw.interfaces.numpy_fft import (fftshift, ifftshift, fftn, ifftn,
                                              rfftn, irfftn)
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
+    FFTW = True
 except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn)
+    FFTW = False
 # import unitary fourier transforms
 from .uft import urfftn, uirfftn
 eps = np.finfo(float).eps
 
 
 def scale(data, dtype=None):
-    '''
+    """
     Scales data to 0 to 1 range
 
     Examples
@@ -46,7 +47,7 @@ def scale(data, dtype=None):
     65535
     >>> b.min()
     0
-    '''
+    """
 
     dmin = np.nanmin(data)
     dmax = np.nanmax(data)
@@ -66,7 +67,7 @@ def scale(data, dtype=None):
 
 
 def scale_uint16(data):
-    '''
+    """
     Scales data to uint16 range
 
     Examples
@@ -82,13 +83,13 @@ def scale_uint16(data):
     65535
     >>> b.min()
     0
-    '''
+    """
 
     return (scale(data) * (2**16 - 1)).astype('uint16')
 
 
 def radial_profile(data, center=None, binsize=1.0):
-    '''
+    """
     Take the radial average of a 2D data array
 
     Taken from http://stackoverflow.com/a/21242776/5030014
@@ -109,7 +110,7 @@ def radial_profile(data, center=None, binsize=1.0):
     --------
     >>> radial_profile(np.ones((11,11)),(5,5))
     (array([ 1.,  1.,  1.,  1.,  1.,  1.,  1.,  1.]), array([ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.]))
-    '''
+    """
     # test if the data is complex
     if np.iscomplexobj(data):
         # if it is complex, call this function on the real and
@@ -145,7 +146,7 @@ def radial_profile(data, center=None, binsize=1.0):
 
 
 def slice_maker(y0, x0, width):
-    '''
+    """
     A utility function to generate slices for later use.
 
     Parameters
@@ -173,7 +174,7 @@ def slice_maker(y0, x0, width):
     [slice(25, 35, None), slice(15, 25, None)]
     >>> slice_maker(30,20,25)
     [slice(18, 43, None), slice(8, 33, None)]
-    '''
+    """
     # ensure integers
     y0, x0 = int(y0), int(x0)
     # calculate the start and end
@@ -192,7 +193,7 @@ def slice_maker(y0, x0, width):
 
 
 def nextpow2(n):
-    '''
+    """
     Returns the next power of 2 for a given number
 
     Parameters
@@ -208,7 +209,7 @@ def nextpow2(n):
     --------
     >>> nextpow2(10)
     16
-    '''
+    """
 
     if n < 0 or not isinstance(n, int):
         raise ValueError('n must be a positive integer, n = {}'.format(n))
@@ -217,9 +218,9 @@ def nextpow2(n):
 
 
 def fft_pad(array, pad_width=None, mode='median', **kwargs):
-    '''
+    """
     Pad an array to prep it for fft
-    '''
+    """
     # pull the old shape
     oldshape = array.shape
     if pad_width is None:
@@ -233,8 +234,12 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
     # generate pad widths from new shape
     padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
                     for o, n in zip(oldshape, newshape))
-    # TODO: add part to deal with cropping here (if padding is negative)
-    return np.pad(array, padding, mode=mode, **kwargs)
+    # Make a crop list, if any of the padding is negative
+    slices = [slice(abs(s1), s2) if s1 < 0 else slice(None)
+              for s1, s2 in padding]
+    # leave 0 pad width where it was cropped
+    padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
+    return np.pad(array[slices], padding, mode=mode, **kwargs)
 
 
 # add np.pad docstring
@@ -242,7 +247,7 @@ fft_pad.__doc__ += np.pad.__doc__
 
 
 def _calc_pad(oldnum, newnum):
-    '''
+    """
     We have three cases:
     - old number even new number even
     - old number odd new number even
@@ -257,7 +262,7 @@ def _calc_pad(oldnum, newnum):
     (3, 3)
     >>> _calc_pad(10, 17)
     (4, 3)
-    '''
+    """
 
     # how much do we need to add?
     width = newnum - oldnum
@@ -397,78 +402,78 @@ def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
 
 
 def enusure_positive(a, eps=0):
-    '''
+    """
     ensure the array is positive with the smallest value equal to eps
-    '''
+    """
     assert np.isfinite(a).all(), 'The array has NaNs'
     a[a < 0] = eps
 
 
-def fftconvolve(in1, in2, mode="full", threads=1, win_func=np.ones):
+# If we have fftw installed than make a better fftconvolve
+if FFTW:
+    def fftconvolve(in1, in2, mode="same", threads=1):
+        """Same as above but with pyfftw added in"""
+        in1 = np.asarray(in1)
+        in2 = np.asarray(in2)
 
-    if in1.ndim == in2.ndim == 0:  # scalar inputs
-        return in1 * in2
-    elif not in1.ndim == in2.ndim:
-        raise ValueError("in1 and in2 should have the same dimensionality")
-    elif in1.size == 0 or in2.size == 0:  # empty arrays
-        return np.array([])
+        if in1.ndim == in2.ndim == 0:  # scalar inputs
+            return in1 * in2
+        elif not in1.ndim == in2.ndim:
+            raise ValueError("in1 and in2 should have the same dimensionality")
+        elif in1.size == 0 or in2.size == 0:  # empty arrays
+            return np.array([])
 
-    s1 = np.array(in1.shape)
-    s2 = np.array(in2.shape)
-    complex_result = (np.issubdtype(in1.dtype, complex) or
-                      np.issubdtype(in2.dtype, complex))
-    # shape = s1 + s2 - 1
-    # if you double pad the shape, which the above line does then you don't
-    # need to take care of any shifting. But you can just pad to the max size
-    # and ifftshift one of the inputs.
-    shape = np.maximum(s1, s2)
-    if _inputs_swap_needed(mode, s1, s2):
-        # Convolution is commutative; order doesn't have any effect on output
-        in1, s1, in2, s2 = in2, s2, in1, s1
+        s1 = np.array(in1.shape)
+        s2 = np.array(in2.shape)
+        complex_result = (np.issubdtype(in1.dtype, complex) or
+                          np.issubdtype(in2.dtype, complex))
+        shape = s1 + s2 - 1
 
-    # Speed up FFT by padding to optimal size for FFTPACK
-    fshape = [next_fast_len(int(d)) for d in shape]
-    fslice = tuple([slice(0, int(sz)) for sz in shape])
-    # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
-    # sure we only call rfftn/irfftn from one thread at a time.
-    if not complex_result and (_rfft_mt_safe or _rfft_lock.acquire(False)):
-        try:
-            winshape = np.array(fshape)
-            winshape[-1] = winshape[-1] // 2 + 1
-            ret = (irfftn(
-                rfftn(fft_pad(in1, fshape), threads=threads) *
-                rfftn(
-                    ifftshift(fft_pad(in2, fshape, mode='constant')),
-                    threads=threads) *
-                # need to ifftshift the window so that HIGH
-                # frequencies are damped, NOT low frequencies
-                ifftshift(win_nd(winshape, win_func)), fshape,
-                threads=threads)[fslice].copy())
-        finally:
-            if not _rfft_mt_safe:
-                _rfft_lock.release()
-    else:
-        # If we're here, it's either because we need a complex result, or we
-        # failed to acquire _rfft_lock (meaning rfftn isn't threadsafe and
-        # is already in use by another thread).  In either case, use the
-        # (threadsafe but slower) SciPy complex-FFT routines instead.
-        ret = ifftn(fftn(in1, fshape) * fftn(in2, fshape))[fslice].copy()
-        if not complex_result:
-            ret = ret.real
+        # Check that input sizes are compatible with 'valid' mode
+        if sig._inputs_swap_needed(mode, s1, s2):
+            # Convolution is commutative; order doesn't have any effect on output
+            in1, s1, in2, s2 = in2, s2, in1, s1
 
-    if mode == "full":
-        return ret
-    elif mode == "same":
-        return _centered(ret, s1)
-    elif mode == "valid":
-        return _centered(ret, s1 - s2 + 1)
-    else:
-        raise ValueError("Acceptable mode flags are 'valid',"
-                         " 'same', or 'full'.")
+        # Speed up FFT by padding to optimal size for FFTPACK
+        fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+        fslice = tuple([slice(0, int(sz)) for sz in shape])
+        # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
+        # sure we only call rfftn/irfftn from one thread at a time.
+        if not complex_result and (sig._rfft_mt_safe or sig._rfft_lock.acquire(False)):
+            try:
+                sp1 = rfftn(in1, fshape, threads=threads)
+                sp2 = rfftn(in2, fshape, threads=threads)
+                ret = (irfftn(sp1 * sp2, fshape, threads=threads)[fslice].copy())
+            finally:
+                if not sig._rfft_mt_safe:
+                    sig._rfft_lock.release()
+        else:
+            # If we're here, it's either because we need a complex result, or we
+            # failed to acquire _rfft_lock (meaning rfftn isn't threadsafe and
+            # is already in use by another thread).  In either case, use the
+            # (threadsafe but slower) SciPy complex-FFT routines instead.
+            sp1 = fftn(in1, fshape, threads=threads)
+            sp2 = fftn(in2, fshape, threads=threads)
+            ret = ifftn(sp1 * sp2, threads=threads)[fslice].copy()
+            if not complex_result:
+                ret = ret.real
+
+        if mode == "full":
+            return ret
+        elif mode == "same":
+            return sig._centered(ret, s1)
+        elif mode == "valid":
+            return sig._centered(ret, s1 - s2 + 1)
+        else:
+            raise ValueError("Acceptable mode flags are 'valid',"
+                             " 'same', or 'full'.")
+    fftconvolve.__doc__ = sig.fftconvolve.__doc__
+else:
+    fftconvolve = sig.fftconvolve
 
 
-def win_nd(size, win_func=sig.hann, **kwargs):
-    '''
+def win_nd(size, win_func=sp.signal.hann, **kwargs):
+    """
     A function to make a multidimensional version of a window function
 
     Parameters
@@ -483,7 +488,7 @@ def win_nd(size, win_func=sig.hann, **kwargs):
     -------
     w : ndarray
         window function
-    '''
+    """
     ndim = len(size)
     newshapes = tuple([
         tuple([1 if i != j else k for i in range(ndim)])
@@ -502,18 +507,18 @@ def win_nd(size, win_func=sig.hann, **kwargs):
 
 
 def anscombe(data):
-    '''
-    Apply Anscombe transform to data
+    """Apply Anscombe transform to data
+
     https://en.wikipedia.org/wiki/Anscombe_transform
-    '''
+    """
     return 2 * np.sqrt(data + 3 / 8)
 
 
 def anscombe_inv(data):
-    '''
-    Apply inverse Anscombe transform to data
+    """Apply inverse Anscombe transform to data
+
     https://en.wikipedia.org/wiki/Anscombe_transform
-    '''
+    """
     part0 = 1 / 4 * data**2
     part1 = 1 / 4 * np.sqrt(3 / 2) / data
     part2 = -11 / 8 / (data**2)
@@ -522,8 +527,7 @@ def anscombe_inv(data):
 
 
 def fft_gaussian_filter(img, sigma):
-    '''
-    FFT gaussian convolution
+    """FFT gaussian convolution
 
     Parameters
     ----------
@@ -536,7 +540,60 @@ def fft_gaussian_filter(img, sigma):
     -------
     filt_img : ndarray
         The filtered image
-    '''
+    """
+    # TODO: add the same padding routine from fftconvolve
     kimg = rfftn(img)
     filt_kimg = fourier_gaussian(kimg, sigma, img.shape[-1])
     return irfftn(filt_kimg)
+
+# def fft_gaussian_filter(in1, sigma, mode="same", threads=1):
+#     """Same as above but with pyfftw added in"""
+#     in1 = np.asarray(in1)
+
+#     if in1.ndim == 0:  # scalar inputs
+#         return in1
+#     elif in1.size == 0:  # empty arrays
+#         return np.array([])
+
+#     s1 = np.array(in1.shape)
+#     # make a shape for the gaussian filter
+#     s2 = np.array([int(s * 4)
+#                    for s in _normalize_sequence(sigma, in1.ndim)])
+#     complex_result = np.issubdtype(in1.dtype, complex)
+#     shape = s1 + s2 - 1
+
+#     # Speed up FFT by padding to optimal size for FFTPACK
+#     fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+#     fslice = tuple([slice(0, int(sz)) for sz in shape])
+#     # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
+#     # sure we only call rfftn/irfftn from one thread at a time.
+#     if not complex_result and (sig._rfft_mt_safe or sig._rfft_lock.acquire(False)):
+#         try:
+#             sp1 = rfftn(in1, fshape, threads=threads)
+#             # multiplication is done below
+#             sp2 = fourier_gaussian(sp1, sigma, fshape[-1])
+#             ret = (irfftn(sp2, fshape, threads=threads)[fslice].copy())
+#         finally:
+#             if not sig._rfft_mt_safe:
+#                 sig._rfft_lock.release()
+#     else:
+#         # If we're here, it's either because we need a complex result, or we
+#         # failed to acquire _rfft_lock (meaning rfftn isn't threadsafe and
+#         # is already in use by another thread).  In either case, use the
+#         # (threadsafe but slower) SciPy complex-FFT routines instead.
+#         sp1 = fftn(in1, fshape, threads=threads)
+#         # multiplication is done below
+#         sp2 = fourier_gaussian(sp1, sigma)
+#         ret = ifftn(sp2, threads=threads)[fslice].copy()
+#         if not complex_result:
+#             ret = ret.real
+
+#     if mode == "full":
+#         return ret
+#     elif mode == "same":
+#         return sig._centered(ret, s1)
+#     elif mode == "valid":
+#         return sig._centered(ret, s1 - s2 + 1)
+#     else:
+#         raise ValueError("Acceptable mode flags are 'valid',"
+#                          " 'same', or 'full'.")
