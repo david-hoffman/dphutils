@@ -298,7 +298,7 @@ if FFTW:
         else:
             raise ValueError("Acceptable mode flags are 'valid',"
                              " 'same', or 'full'.")
-    fftconvolve.__doc__ = sig.fftconvolve.__doc__
+    #fftconvolve.__doc__ = "DPH Utils: " + sig.fftconvolve.__doc__
 else:
     fftconvolve = sig.fftconvolve
 
@@ -373,9 +373,16 @@ def fft_gaussian_filter(img, sigma):
         The filtered image
     """
     # TODO: add the same padding routine from fftconvolve
-    kimg = rfftn(img)
-    filt_kimg = fourier_gaussian(kimg, sigma, img.shape[-1])
-    return irfftn(filt_kimg)
+    s1 = np.array(img.shape)
+    s2 = np.array([int(s * 10) for s in _normalize_sequence(sigma, img.ndim)])
+    shape = s1 + s2 - 1
+    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+    pad_img = fft_pad(img, fshape, "symmetric")
+    padding = tuple(_calc_pad(o, n) for o, n in zip(img.shape, pad_img.shape))
+    fslice = tuple(slice(s, -e) for s, e in padding)
+    kimg = rfftn(pad_img, fshape)
+    filt_kimg = fourier_gaussian(kimg, sigma, pad_img.shape[-1])
+    return irfftn(filt_kimg, fshape)[fslice]
 
 # def fft_gaussian_filter(in1, sigma, mode="same", threads=1):
 #     """Same as above but with pyfftw added in"""
@@ -392,7 +399,8 @@ def fft_gaussian_filter(img, sigma):
 #                    for s in _normalize_sequence(sigma, in1.ndim)])
 #     complex_result = np.issubdtype(in1.dtype, complex)
 #     shape = s1 + s2 - 1
-
+#     print(s1)
+#     print(shape)
 #     # Speed up FFT by padding to optimal size for FFTPACK
 #     fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
 #     fslice = tuple([slice(0, int(sz)) for sz in shape])
