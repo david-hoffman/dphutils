@@ -8,7 +8,6 @@ Copyright (c) 2016, David Hoffman
 """
 
 import numpy as np
-import numexpr as ne
 import scipy as sp
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
@@ -24,8 +23,6 @@ except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn)
     FFTW = False
-# import unitary fourier transforms
-from .uft import urfftn, uirfftn
 eps = np.finfo(float).eps
 
 
@@ -51,18 +48,12 @@ def scale(data, dtype=None):
 
     dmin = np.nanmin(data)
     dmax = np.nanmax(data)
-
-    if dtype is None:
+    if np.issubdtype(dtype, np.integer):
+        tmin = np.iinfo(dtype).min
+        tmax = np.iinfo(dtype).max
+    else:
         tmin = 0.0
         tmax = 1.0
-    else:
-        if np.issubdtype(dtype, np.integer):
-            tmin = np.iinfo(dtype).min
-            tmax = np.iinfo(dtype).max
-        else:
-            tmin = np.finfo(dtype).min
-            tmax = np.finfo(dtype).max
-
     return ((data - dmin) / (dmax - dmin) * (tmax - tmin) + tmin).astype(dtype)
 
 
@@ -85,7 +76,7 @@ def scale_uint16(data):
     0
     """
 
-    return (scale(data) * (2**16 - 1)).astype('uint16')
+    return scale(data, np.uint16)
 
 
 def radial_profile(data, center=None, binsize=1.0):
@@ -108,7 +99,7 @@ def radial_profile(data, center=None, binsize=1.0):
 
     Examples
     --------
-    >>> radial_profile(np.ones((11,11)),(5,5))
+    >>> radial_profile(np.ones((11, 11)))
     (array([ 1.,  1.,  1.,  1.,  1.,  1.,  1.,  1.]), array([ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.]))
     """
     # test if the data is complex
@@ -119,14 +110,13 @@ def radial_profile(data, center=None, binsize=1.0):
         imag_prof, imag_std = radial_profile(np.imag(data), center, binsize)
         return real_prof + imag_prof * 1j, real_std + imag_std * 1j
     # pull the data shape
-    y, x = np.indices((data.shape))
+    idx = np.indices((data.shape))
     if center is None:
         # find the center
-        center = np.array(data.shape) / 2
-    # split the cetner
-    y0, x0 = center
+        center = np.array(data.shape) // 2
     # calculate the radius from center
-    r = np.sqrt((x - x0)**2 + (y - y0)**2)
+    idx2 = (idx - (np.array(data.shape) // 2)[[Ellipsis] + [np.newaxis] * (data.ndim)])
+    r = np.sqrt(np.sum([i**2 for i in idx2], 0))
     # convert to int
     r = np.round(r / binsize).astype(np.int)
     # sum the values at equal r
@@ -192,31 +182,6 @@ def slice_maker(y0, x0, width):
     return toreturn
 
 
-def nextpow2(n):
-    """
-    Returns the next power of 2 for a given number
-
-    Parameters
-    ----------
-    n : int
-        The number for which you want to know the next power of two
-
-    Returns
-    -------
-    m : int
-
-    Examples
-    --------
-    >>> nextpow2(10)
-    16
-    """
-
-    if n < 0 or not isinstance(n, int):
-        raise ValueError('n must be a positive integer, n = {}'.format(n))
-
-    return 1 << (n - 1).bit_length()
-
-
 def fft_pad(array, pad_width=None, mode='median', **kwargs):
     """
     Pad an array to prep it for fft
@@ -224,8 +189,8 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
     # pull the old shape
     oldshape = array.shape
     if pad_width is None:
-        # update each dimenstion to next power of two
-        newshape = tuple(nextpow2(n) for n in oldshape)
+        # update each dimension to a 5-smooth hamming number
+        newshape = tuple(sig.fftpack.helper.next_fast_len(n) for n in oldshape)
     else:
         if isinstance(pad_width, int):
             newshape = tuple(pad_width for n in oldshape)
@@ -262,6 +227,8 @@ def _calc_pad(oldnum, newnum):
     (3, 3)
     >>> _calc_pad(10, 17)
     (4, 3)
+    >>> _calc_pad(17, 17)
+    (0, 0)
     """
 
     # how much do we need to add?
@@ -271,142 +238,6 @@ def _calc_pad(oldnum, newnum):
     # calculate the other
     pad2 = width - pad1
     return (pad2, pad1)
-
-
-def richardson_lucy(image, psf, iterations=10, clip=False, prediction_order=2,
-                    win_func=None):
-    """
-    Richardson-Lucy deconvolution.
-
-    Parameters
-    ----------
-    image : ndarray
-       Input degraded image (can be N dimensional).
-    psf : ndarray
-       The point spread function.
-    iterations : int
-       Number of iterations. This parameter plays the role of
-       regularisation.
-    clip : boolean, optional
-       True by default. If true, pixel value of the result above 1 or
-       under -1 are thresholded for skimage pipeline compatibility.
-
-    Returns
-    -------
-    im_deconv : ndarray
-       The deconvolved image.
-
-    Examples
-    --------
-    >>> from skimage import color, data, restoration
-    >>> camera = color.rgb2gray(data.camera())
-    >>> from scipy.signal import convolve2d
-    >>> psf = np.ones((5, 5)) / 25
-    >>> camera = convolve2d(camera, psf, 'same')
-    >>> camera += 0.1 * camera.std() * np.random.standard_normal(camera.shape)
-    >>> deconvolved = restoration.richardson_lucy(camera, psf, 5, False)
-
-    References
-    ----------
-    .. [1] http://en.wikipedia.org/wiki/Richardson%E2%80%93Lucy_deconvolution
-    (2) Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image Restoration
-    Algorithms. Applied Optics 1997, 36 (8), 1766.
-
-    """
-    # Stolen from the dev branch of skimage because stable branch is slow
-    # checked against matlab on 20160805 and agrees to within machine precision
-    image = image.astype(np.float)
-    psf = psf.astype(np.float)
-    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
-                                    " of dimensions")
-    if win_func is None:
-        window = 1.0
-    else:
-        winshape = np.array(image.shape)
-        winshape[-1] = winshape[-1] // 2 + 1
-        window = ifftshift(win_nd(winshape, win_func=win_func))
-    # Build the dictionary to pass around and update
-    psf_norm = fft_pad(scale(psf), image.shape, mode='constant')
-    psf_norm /= psf_norm.sum()
-    u_tm2 = None
-    u_tm1 = None
-    g_tm2 = None
-    g_tm1 = None
-    u_t = None
-    y_t = image
-    # below needs to be normalized.
-    otf = window * urfftn(ifftshift(psf_norm))
-
-    for i in range(iterations):
-        # call the update function
-        # make mirror psf
-        # calculate RL iteration using the predicted step (y_t)
-        reblur = np.real(uirfftn(otf * urfftn(y_t)))
-        # assert (reblur > eps).all(), 'Reblur 0 or negative'
-        im_ratio = image / reblur
-        # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-        estimate = np.real(uirfftn(np.conj(otf) * urfftn(im_ratio)))
-        # assert (estimate > eps).all(), 'im_ratio 0 or negative'
-        u_tp1 = y_t * estimate
-
-        # enforce non-negativity
-        u_tp1[u_tp1 < 0] = 0
-
-        # update
-        u_tm2 = u_tm1
-        u_tm1 = u_t
-        u_t = u_tp1
-        g_tm2 = g_tm1
-        g_tm1 = ne.evaluate("u_tp1 - y_t")
-        # initialize alpha to zero
-        alpha = 0
-        # run through the specified iterations
-        if i > 1:
-            # calculate alpha according to 2
-            alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
-
-            alpha = max(min(alpha, 1), 0)
-            if not np.isfinite(alpha):
-                print(alpha)
-                alpha = 0
-            assert alpha >= 0, alpha
-            assert alpha <= 1, alpha
-
-        # if alpha is positive calculate predicted step
-        if alpha != 0:
-            if prediction_order > 0:
-                # first order correction
-                h1_t = u_t - u_tm1
-                if prediction_order > 1:
-                    # second order correction
-                    h2_t = (u_t - 2 * u_tm1 + u_tm2)
-                else:
-                    h2_t = 0
-            else:
-                h1_t = 0
-        else:
-            h2_t = 0
-            h1_t = 0
-
-        y_t = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
-        enusure_positive(y_t)
-        assert (y_t >= 0).all()
-
-    im_deconv = u_t
-
-    if clip:
-        im_deconv[im_deconv > 1] = 1
-        im_deconv[im_deconv < -1] = -1
-
-    return im_deconv
-
-
-def enusure_positive(a, eps=0):
-    """
-    ensure the array is positive with the smallest value equal to eps
-    """
-    assert np.isfinite(a).all(), 'The array has NaNs'
-    a[a < 0] = eps
 
 
 # If we have fftw installed than make a better fftconvolve
