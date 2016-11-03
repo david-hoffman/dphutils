@@ -202,8 +202,7 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
     padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
                     for o, n in zip(oldshape, newshape))
     # Make a crop list, if any of the padding is negative
-    slices = [slice(abs(s1), s2) if s1 < 0 else slice(None)
-              for s1, s2 in padding]
+    slices = [_calc_crop(s1, s2) for s1, s2 in padding]
     # leave 0 pad width where it was cropped
     padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
     return np.pad(array[slices], padding, mode=mode, **kwargs)
@@ -211,6 +210,13 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
 
 # add np.pad docstring
 fft_pad.__doc__ += np.pad.__doc__
+
+
+def _calc_crop(s1, s2):
+    """Calc the cropping from the padding"""
+    a1 = abs(s1) if s1 < 0 else None
+    a2 = s2 if s2 < 0 else None
+    return slice(a1, a2, None)
 
 
 def _calc_pad(oldnum, newnum):
@@ -231,6 +237,8 @@ def _calc_pad(oldnum, newnum):
     (4, 3)
     >>> _calc_pad(17, 17)
     (0, 0)
+    >>> _calc_pad(17, 10)
+    (-4, -3)
     """
 
     # how much do we need to add?
