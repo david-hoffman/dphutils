@@ -9,7 +9,9 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import scipy as sp
+import warnings
 from scipy.ndimage.fourier import fourier_gaussian
+from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 try:
@@ -372,67 +374,28 @@ def fft_gaussian_filter(img, sigma):
     filt_img : ndarray
         The filtered image
     """
-    # TODO: add the same padding routine from fftconvolve
+    # This doesn't help agreement but it will make things faster
+    # pull the shape
     s1 = np.array(img.shape)
-    s2 = np.array([int(s * 10) for s in _normalize_sequence(sigma, img.ndim)])
-    shape = s1 + s2 - 1
+    # if any of the sizes is 32 or smaller, revert to proper filter
+    if any(s1 < 33):
+        warnings.warn(("Input is small along a dimension,"
+                       " will revert to `gaussian_filter`"))
+        return gaussian_filter(img, sigma)
+    # s2 = np.array([int(s * 4) for s in _normalize_sequence(sigma, img.ndim)])
+    shape = s1  # + s2 - 1
+    # calculate a nice shape
     fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
-    pad_img = fft_pad(img, fshape, "symmetric")
+    # pad out with reflection
+    pad_img = fft_pad(img, fshape, "reflect")
+    # calculate the padding
     padding = tuple(_calc_pad(o, n) for o, n in zip(img.shape, pad_img.shape))
-    fslice = tuple(slice(s, -e) for s, e in padding)
+    # so that we can calculate the cropping, maybe this should be integrated
+    # into `fft_pad` ...
+    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None)
+                   for s, e in padding)
+    # fourier transfrom and apply the filter
     kimg = rfftn(pad_img, fshape)
     filt_kimg = fourier_gaussian(kimg, sigma, pad_img.shape[-1])
+    # inverse FFT and return.
     return irfftn(filt_kimg, fshape)[fslice]
-
-# def fft_gaussian_filter(in1, sigma, mode="same", threads=1):
-#     """Same as above but with pyfftw added in"""
-#     in1 = np.asarray(in1)
-
-#     if in1.ndim == 0:  # scalar inputs
-#         return in1
-#     elif in1.size == 0:  # empty arrays
-#         return np.array([])
-
-#     s1 = np.array(in1.shape)
-#     # make a shape for the gaussian filter
-#     s2 = np.array([int(s * 4)
-#                    for s in _normalize_sequence(sigma, in1.ndim)])
-#     complex_result = np.issubdtype(in1.dtype, complex)
-#     shape = s1 + s2 - 1
-#     print(s1)
-#     print(shape)
-#     # Speed up FFT by padding to optimal size for FFTPACK
-#     fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
-#     fslice = tuple([slice(0, int(sz)) for sz in shape])
-#     # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
-#     # sure we only call rfftn/irfftn from one thread at a time.
-#     if not complex_result and (sig._rfft_mt_safe or sig._rfft_lock.acquire(False)):
-#         try:
-#             sp1 = rfftn(in1, fshape, threads=threads)
-#             # multiplication is done below
-#             sp2 = fourier_gaussian(sp1, sigma, fshape[-1])
-#             ret = (irfftn(sp2, fshape, threads=threads)[fslice].copy())
-#         finally:
-#             if not sig._rfft_mt_safe:
-#                 sig._rfft_lock.release()
-#     else:
-#         # If we're here, it's either because we need a complex result, or we
-#         # failed to acquire _rfft_lock (meaning rfftn isn't threadsafe and
-#         # is already in use by another thread).  In either case, use the
-#         # (threadsafe but slower) SciPy complex-FFT routines instead.
-#         sp1 = fftn(in1, fshape, threads=threads)
-#         # multiplication is done below
-#         sp2 = fourier_gaussian(sp1, sigma)
-#         ret = ifftn(sp2, threads=threads)[fslice].copy()
-#         if not complex_result:
-#             ret = ret.real
-
-#     if mode == "full":
-#         return ret
-#     elif mode == "same":
-#         return sig._centered(ret, s1)
-#     elif mode == "valid":
-#         return sig._centered(ret, s1 - s2 + 1)
-#     else:
-#         raise ValueError("Acceptable mode flags are 'valid',"
-#                          " 'same', or 'full'.")

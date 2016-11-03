@@ -57,6 +57,12 @@ class TestFFTPad(unittest.TestCase):
 
         assert np.all(newsize == np.array(newdata.shape))
 
+    # need to add tests for smaller sizes and need to test
+    # that if max is at fft center that it remains there after padding.
+    # _calc_pad needs tests
+
+
+# slice_maker needs more extensive testing, can use _calc_pad ...
 
 def test_radprof_complex():
     """Testing rad prof for complex values"""
@@ -85,23 +91,26 @@ def test_anscombe():
     assert_almost_equal((in_ans_data - data).var(), 0, 4)
 
 
+# need to move these into a test class
 def test_fft_gaussian_filter():
     """Test the gaussian filter"""
     data = np.random.randn(128, 128, 128)
-    sigmas = (np.random.random(3) + 1) * 2
+    sigmas = (np.random.random(data.ndim) + 1) * 2
     fftg = fft_gaussian_filter(data, sigmas)
     fftc = gaussian_filter(data, sigmas)
     # there's an edge effect that I can't track down maybe its
     # in fourier_gaussian
     fslice = (slice(16, -16), ) * data.ndim
-    assert_allclose(fftg[fslice], fftc[fslice])
+    assert_allclose(fftg[fslice], fftc[fslice], 1e-7, 3e-5)
 
 
 def test_fft_gaussian_filter_small():
     """make sure fft_gaussian_filter defaults to regular when input is small"""
     data = np.random.randn(32, 32, 2048)
     sigmas = (np.random.random(data.ndim) + 1) * 2
-    fftg = fft_gaussian_filter(data, sigmas)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fftg = fft_gaussian_filter(data, sigmas)
     fftc = gaussian_filter(data, sigmas)
     assert_allclose(fftg, fftc)
 
