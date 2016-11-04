@@ -30,7 +30,20 @@ eps = np.finfo(float).eps
 
 def scale(data, dtype=None):
     """
-    Scales data to 0 to 1 range
+    Scales data to [0.0, 1.0] range, unless an integer dtype is specified
+    in which case the data is scaled to fill the bit depth of the dtype.
+
+    Parameters
+    ----------
+    data : numeric type
+        Data to be scaled, can contain nan
+    dtype : integer dtype
+        Specify the bit depth to fill
+
+    Returns
+    -------
+    scaled_data : numeric type
+        Scaled data
 
     Examples
     --------
@@ -47,7 +60,8 @@ def scale(data, dtype=None):
     >>> b.min()
     0
     """
-
+    if np.issubdtype(data.dtype, np.complex):
+        raise TypeError("`scale` is not defined for complex values")
     dmin = np.nanmin(data)
     dmax = np.nanmax(data)
     if np.issubdtype(dtype, np.integer):
@@ -60,24 +74,7 @@ def scale(data, dtype=None):
 
 
 def scale_uint16(data):
-    """
-    Scales data to uint16 range
-
-    Examples
-    --------
-    >>> from numpy.random import randn
-    >>> a = randn(10)
-    >>> a.dtype
-    dtype('float64')
-    >>> b = scale_uint16(a)
-    >>> b.dtype
-    dtype('uint16')
-    >>> b.max()
-    65535
-    >>> b.min()
-    0
-    """
-
+    """Convenience function to scale data to the uint16 range."""
     return scale(data, np.uint16)
 
 
@@ -167,8 +164,13 @@ def slice_maker(y0, x0, width):
     >>> slice_maker(30,20,25)
     [slice(18, 43, None), slice(8, 33, None)]
     """
+    if not np.isrealobj((y0, x0, width)):
+        raise TypeError("`slice_maker` only accepts real input")
+    if width < 0:
+        raise ValueError("width cannot be negative, width = {}".format(width))
     # ensure integers
-    y0, x0 = int(y0), int(x0)
+    y0, x0 = np.rint((y0, x0)).astype(int)
+    width = int(np.rint(width))
     # calculate the start and end
     half1 = width // 2
     # we need two halves for uneven widths
@@ -177,9 +179,14 @@ def slice_maker(y0, x0, width):
     xstart = x0 - half1
     yend = y0 + half2
     xend = x0 + half2
+    assert ystart <= yend
+    assert xstart <= xend
+    if yend <= 0:
+        ystart, yend = 0, 0
+    if xend <= 0:
+        xstart, xend = 0, 0
     # the max calls are to make slice_maker play nice with edges.
     toreturn = [slice(max(0, ystart), yend), slice(max(0, xstart), xend)]
-
     # return a list of slices
     return toreturn
 
@@ -220,34 +227,46 @@ def _calc_crop(s1, s2):
 
 
 def _calc_pad(oldnum, newnum):
-    """
-    We have three cases:
-    - old number even new number even
-    - old number odd new number even
-    - old number odd new number odd
-    - old number even new number odd
+    """ Calculate the proper padding for fft_pad
 
+    We have three cases:
+    old number even new number even
     >>> _calc_pad(10, 16)
     (3, 3)
+
+    old number odd new number even
     >>> _calc_pad(11, 16)
-    (3, 2)
+    (2, 3)
+
+    old number odd new number odd
     >>> _calc_pad(11, 17)
     (3, 3)
+
+    old number even new number odd
     >>> _calc_pad(10, 17)
     (4, 3)
+
+    same numbers
     >>> _calc_pad(17, 17)
     (0, 0)
+
+    from larger to smaller.
     >>> _calc_pad(17, 10)
     (-4, -3)
     """
-
     # how much do we need to add?
     width = newnum - oldnum
-    # calculate one side
-    pad1 = width // 2
-    # calculate the other
-    pad2 = width - pad1
-    return (pad2, pad1)
+    # calculate one side, smaller
+    pad_s = width // 2
+    # calculate the other, bigger
+    pad_b = width - pad_s
+    # if oldnum is odd and newnum is even
+    # we want to pull things backward
+    if oldnum % 2:
+        pad1, pad2 = pad_s, pad_b
+    else:
+        pad1, pad2 = pad_b, pad_s
+    return pad1, pad2
 
 
 # If we have fftw installed than make a better fftconvolve

@@ -1,6 +1,7 @@
 from nose.tools import *
 import numpy as np
 from numpy.testing import assert_allclose, assert_almost_equal, assert_approx_equal
+from itertools import product
 import unittest
 from scipy.signal import signaltools as sig
 from scipy.ndimage.filters import gaussian_filter
@@ -13,27 +14,14 @@ class TestFFTPad(unittest.TestCase):
     def setUp(self):
         pass
 
-    def test_new_shape_no_size_even(self):
-        '''
-        Make sure the new shape has nextpow2 dimensions, even
-        '''
-        oldsize = 10
-        oldshape = (oldsize, oldsize)
+    def test_new_shape_no_size(self):
+        """Test the make a new shape with even and odd numbers when no size is
+        specified, i.e. test auto padding"""
+        oldshape = (2 * 17, 17)
         data = np.zeros(oldshape)
-        newsize = tuple(sig.fftpack.helper.next_fast_len(s) for s in oldshape)
+        newshape = tuple(sig.fftpack.helper.next_fast_len(s) for s in oldshape)
         newdata = fft_pad(data)
-        assert np.all(newsize == np.array(newdata.shape))
-
-    def test_new_shape_no_size_odd(self):
-        '''
-        Make sure the new shape has nextpow2 dimensions, odd
-        '''
-        oldsize = 11
-        oldshape = (oldsize, oldsize)
-        data = np.zeros(oldshape)
-        newsize = tuple(sig.fftpack.helper.next_fast_len(s) for s in oldshape)
-        newdata = fft_pad(data)
-        assert np.all(newsize == np.array(newdata.shape))
+        assert_equal(newshape, newdata.shape)
 
     def test_new_shape_one_size(self):
         '''
@@ -43,8 +31,7 @@ class TestFFTPad(unittest.TestCase):
         data = np.random.randn(*oldshape)
         newsize = 50
         newdata = fft_pad(data, newsize)
-
-        assert np.all(newsize == np.array(newdata.shape))
+        assert_equal((newsize, ) * newdata.ndim, newdata.shape)
 
     def test_new_shape_multiple(self):
         '''
@@ -54,15 +41,54 @@ class TestFFTPad(unittest.TestCase):
         data = np.random.randn(*oldshape)
         newsize = (50, 40, 30, 100)
         newdata = fft_pad(data, newsize)
+        assert_equal(newsize, newdata.shape)
 
-        assert np.all(newsize == np.array(newdata.shape))
+    def test_smaller_shape(self):
+        """Test that cropping works as expected"""
+        oldshape = np.random.randint(10, 200)
+        newshape = np.random.randint(5, oldshape)
+        data = np.ones(oldshape)
+        assert_equal(data.shape, (oldshape, ))
+        pad_data = fft_pad(data, newshape)
+        assert_equal(pad_data.shape, (newshape, ))
 
-    # need to add tests for smaller sizes and need to test
-    # that if max is at fft center that it remains there after padding.
-    # _calc_pad needs tests
+    def test_right_position_cases(self):
+        """make sure that center stays centered (for ffts)
+        all cases"""
+        cases = (
+            (14, 34),  # even -> even
+            (14, 35),  # even -> odd
+            (17, 34),  # odd -> even
+            (17, 35),  # odd -> odd
+        )
+        # same cases
+        same = (
+            (34, 34),  # odd -> odd
+            (35, 35),  # even -> even
+        )
+        # try the cropping version too
+        rev_cases = tuple((j, i) for i, j in cases)
+        for oldshape, newshape in (cases + same + rev_cases):
+            data = np.zeros(oldshape)
+            data[0] = 1
+            data_centered = ifftshift(data)
+            data_padded = fft_pad(data_centered, newshape)
+            assert_equal(fftshift(data_padded)[0], 1)
 
+    def test_right_position_multidimensional(self):
+        """make sure that center stays centered (for ffts)
+        fuzzy test to see if I missed anything"""
+        for i in range(10):
+            dims = np.random.randint(1, 4)
+            oldshape = np.random.randint(10, 100, dims)
+            newshape = np.random.randint(10, 100, dims)
+            data = np.zeros(oldshape)
+            zero_loc = (0, ) * dims
+            data[zero_loc] = 1
+            data_centered = ifftshift(data)
+            data_padded = fft_pad(data_centered, newshape)
+            assert_equal(fftshift(data_padded)[zero_loc], 1)
 
-# slice_maker needs more extensive testing, can use _calc_pad ...
 
 def test_radprof_complex():
     """Testing rad prof for complex values"""
@@ -94,7 +120,7 @@ def test_anscombe():
 # need to move these into a test class
 def test_fft_gaussian_filter():
     """Test the gaussian filter"""
-    data = np.random.randn(128, 128, 128)
+    data = np.random.randn(100, 100, 100)
     sigmas = (np.random.random(data.ndim) + 1) * 2
     fftg = fft_gaussian_filter(data, sigmas)
     fftc = gaussian_filter(data, sigmas)
@@ -106,7 +132,7 @@ def test_fft_gaussian_filter():
 
 def test_fft_gaussian_filter_small():
     """make sure fft_gaussian_filter defaults to regular when input is small"""
-    data = np.random.randn(32, 32, 2048)
+    data = np.random.randn(32, 32, 512)
     sigmas = (np.random.random(data.ndim) + 1) * 2
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -117,6 +143,36 @@ def test_fft_gaussian_filter_small():
 
 def test_fft_gaussian_filter_small_warn():
     """make sure fft_gaussian_filter defaults to regular when input is small"""
-    data = np.random.randn(32, 32, 2048)
+    data = np.random.randn(32, 32, 512)
     sigmas = (np.random.random(data.ndim) + 1) * 2
     assert_warns(UserWarning, fft_gaussian_filter, data, sigmas)
+
+
+def _turn_slices_into_list(slice_list):
+    """Take output of slice_maker and turn into list for testing"""
+    result = []
+    for s in slice_list:
+        result += [s.start, s.stop]
+    return np.array(result)
+
+
+def test_slice_maker_negative():
+    """Make sure slice_maker doesn't return negative indices"""
+    slices = _turn_slices_into_list(slice_maker(10, -10, 10))
+    assert_true((slices >= 0).all(), slices)
+
+
+def test_slice_maker_complex_input():
+    """test complex in all positions"""
+    for y0, x0, width in product(*(((10, 10j),) * 3)):
+        if np.isrealobj((y0, x0, width)):
+            continue
+        assert_raises(TypeError, slice_maker, y0, x0, width)
+
+
+def test_slice_maker_float_input():
+    """"""
+    for i in range(10):
+        y0, x0, width = np.random.random(3) * 100
+        slice_list = _turn_slices_into_list(slice_maker(y0, x0, width))
+        assert_true(np.issubdtype(slice_list.dtype, int))
