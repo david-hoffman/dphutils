@@ -171,8 +171,22 @@ def test_slice_maker_complex_input():
 
 
 def test_slice_maker_float_input():
-    """"""
+    """Make sure floats are rounded properly"""
     for i in range(10):
         y0, x0, width = np.random.random(3) * 100
         slice_list = _turn_slices_into_list(slice_maker(y0, x0, width))
         assert_true(np.issubdtype(slice_list.dtype, int))
+
+
+def test_slice_maker_center():
+    """Make sure slices center y0, x0 at fft center"""
+    for i in range(10):
+        data = np.zeros((256, 256))
+        center_loc = tuple(np.random.randint(64, 256 - 64, 2))
+        data[center_loc] = 1
+        width = np.random.randint(16, 32)
+        slices = slice_maker(*center_loc, width)
+        data_crop = data[slices]
+        print(data_crop)
+        print(ifftshift(data_crop))
+        assert_equal(ifftshift(data_crop)[0, 0], 1, ifftshift(data_crop))

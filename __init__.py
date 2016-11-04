@@ -171,16 +171,14 @@ def slice_maker(y0, x0, width):
     # ensure integers
     y0, x0 = np.rint((y0, x0)).astype(int)
     width = int(np.rint(width))
-    # calculate the start and end
-    half1 = width // 2
-    # we need two halves for uneven widths
-    half2 = width - half1
+    # use _calc_pad
+    half2, half1 = _calc_pad(0, width)
     ystart = y0 - half1
     xstart = x0 - half1
     yend = y0 + half2
     xend = x0 + half2
-    assert ystart <= yend
-    assert xstart <= xend
+    assert ystart <= yend, "ystart > yend"
+    assert xstart <= xend, "xstart > xend"
     if yend <= 0:
         ystart, yend = 0, 0
     if xend <= 0:
