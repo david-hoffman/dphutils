@@ -117,8 +117,11 @@ def radial_profile(data, center=None, binsize=1.0):
     if center is None:
         # find the center
         center = np.array(data.shape) // 2
+    else:
+        # make sure center is an array.
+        center = np.asarray(center)
     # calculate the radius from center
-    idx2 = (idx - (np.array(data.shape) // 2)[[Ellipsis] + [np.newaxis] * (data.ndim)])
+    idx2 = idx - center[[Ellipsis] + [np.newaxis] * (data.ndim)]
     r = np.sqrt(np.sum([i**2 for i in idx2], 0))
     # convert to int
     r = np.round(r / binsize).astype(np.int)
