@@ -355,6 +355,34 @@ else:
     fftconvolve = sig.fftconvolve
 
 
+def fftconvolve_fast(image, psf, **kwargs):
+    """A faster version of fft convolution
+
+    In this case the OTF ifftshifted before FFT but the image is not. This
+    works because the PSF is assumed to have a small extent in real space.
+    """
+    shape = np.array(image.shape)
+    # calculate a nice shape
+    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+    # pad out with reflection
+    pad_img = fft_pad(image, fshape, "reflect")
+    # calculate padding
+    padding = tuple(_calc_pad(o, n)
+                    for o, n in zip(image.shape, pad_img.shape))
+    # so that we can calculate the cropping, maybe this should be integrated
+    # into `fft_pad` ...
+    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None)
+                   for s, e in padding)
+    if psf.shape != pad_img.shape:
+        # its been assumed that the background of the psf has already been
+        # removed and that the psf has already been centered
+        psf = fft_pad(psf, pad_img.shape, mode='constant')
+    otf = rfftn(ifftshift(psf), pad_img.shape, **kwargs)
+    k_image = rfftn(pad_img, pad_img.shape, **kwargs)
+    blurred_image = irfftn(otf * k_image, pad_img.shape, **kwargs)
+    return blurred_image[fslice]
+
+
 def win_nd(size, win_func=sp.signal.hann, **kwargs):
     """
     A function to make a multidimensional version of a window function
