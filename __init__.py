@@ -107,7 +107,11 @@ def radial_profile(data, center=None, binsize=1.0):
         # imaginary parts and return the complex sum.
         real_prof, real_std = radial_profile(np.real(data), center, binsize)
         imag_prof, imag_std = radial_profile(np.imag(data), center, binsize)
-        return real_prof + imag_prof * 1j, real_std + imag_std * 1j
+        return real_prof + imag_prof * 1j, np.sqrt(real_std**2 + imag_std**2)
+        # or do mag and phase
+        # mag_prof, mag_std = radial_profile(np.abs(data), center, binsize)
+        # phase_prof, phase_std = radial_profile(np.angle(data), center, binsize)
+        # return mag_prof * np.exp(phase_prof * 1j), mag_std * np.exp(phase_std * 1j)
     # pull the data shape
     idx = np.indices((data.shape))
     if center is None:
