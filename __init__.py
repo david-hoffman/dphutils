@@ -79,8 +79,7 @@ def scale_uint16(data):
 
 
 def radial_profile(data, center=None, binsize=1.0):
-    """
-    Take the radial average of a 2D data array
+    """Take the radial average of a 2D data array
 
     Taken from http://stackoverflow.com/a/21242776/5030014
 
@@ -196,20 +195,20 @@ def slice_maker(y0, x0, width):
     return toreturn
 
 
-def fft_pad(array, pad_width=None, mode='median', **kwargs):
+def fft_pad(array, newshape=None, mode='median', **kwargs):
     """
     Pad an array to prep it for fft
     """
     # pull the old shape
     oldshape = array.shape
-    if pad_width is None:
+    if newshape is None:
         # update each dimension to a 5-smooth hamming number
         newshape = tuple(sig.fftpack.helper.next_fast_len(n) for n in oldshape)
     else:
-        if isinstance(pad_width, int):
-            newshape = tuple(pad_width for n in oldshape)
+        if isinstance(newshape, int):
+            newshape = tuple(newshape for n in oldshape)
         else:
-            newshape = tuple(pad_width)
+            newshape = tuple(newshape)
     # generate pad widths from new shape
     padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
                     for o, n in zip(oldshape, newshape))
@@ -219,6 +218,25 @@ def fft_pad(array, pad_width=None, mode='median', **kwargs):
     padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
     return np.pad(array[slices], padding, mode=mode, **kwargs)
 
+
+# def easy_rfft(data, axes=None):
+#     """utility method that includes fft shifting"""
+#     return fftshift(
+#         rfftn(
+#             ifftshift(
+#                 data, axes=axes
+#             ), axes=axes
+#         ), axes=axes)
+
+
+# def easy_irfft(data, axes=None):
+#     """utility method that includes fft shifting"""
+#     return ifftshift(
+#         irfftn(
+#             fftshift(
+#                 data, axes=axes
+#             ), axes=axes
+#         ), axes=axes)
 
 # add np.pad docstring
 fft_pad.__doc__ += np.pad.__doc__
