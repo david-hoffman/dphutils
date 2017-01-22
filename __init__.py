@@ -196,9 +196,7 @@ def slice_maker(y0, x0, width):
 
 
 def fft_pad(array, newshape=None, mode='median', **kwargs):
-    """
-    Pad an array to prep it for fft
-    """
+    """Pad an array to prep it for fft"""
     # pull the old shape
     oldshape = array.shape
     if newshape is None:
@@ -209,6 +207,16 @@ def fft_pad(array, newshape=None, mode='median', **kwargs):
             newshape = tuple(newshape for n in oldshape)
         else:
             newshape = tuple(newshape)
+    # generate padding and slices
+    padding, slices = padding_slices(oldshape, newshape)
+    return np.pad(array[slices], padding, mode=mode, **kwargs)
+
+
+def padding_slices(oldshape, newshape):
+    """This function takes the old shape and the new shape and calculates
+    the required padding or cropping.newshape
+
+    Can be used to generate the slices needed to undo fft_pad above"""
     # generate pad widths from new shape
     padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
                     for o, n in zip(oldshape, newshape))
@@ -216,8 +224,7 @@ def fft_pad(array, newshape=None, mode='median', **kwargs):
     slices = [_calc_crop(s1, s2) for s1, s2 in padding]
     # leave 0 pad width where it was cropped
     padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
-    return np.pad(array[slices], padding, mode=mode, **kwargs)
-
+    return padding, slices
 
 # def easy_rfft(data, axes=None):
 #     """utility method that includes fft shifting"""
@@ -355,32 +362,42 @@ else:
     fftconvolve = sig.fftconvolve
 
 
-def fftconvolve_fast(image, psf, **kwargs):
+def fftconvolve_fast(data, kernel, **kwargs):
     """A faster version of fft convolution
 
-    In this case the OTF ifftshifted before FFT but the image is not. This
-    works because the PSF is assumed to have a small extent in real space.
+    In this case the kernel ifftshifted before FFT but the data is not.
+    This can be done because the effect of fourier convolution is to 
+    "wrap" around the data edges so whether we ifftshift before FFT
+    and then fftshift after it makes no difference so we can skip the
+    step entirely.
     """
-    shape = np.array(image.shape)
+    # TODO: add error checking like in the above and add functionality
+    # for complex inputs. Also could add options for different types of
+    # padding.
+    dshape = np.array(data.shape)
+    kshape = np.array(kernel.shape)
+    # find maximum dimensions
+    maxshape = np.max((dshape, kshape), 0)
     # calculate a nice shape
-    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in maxshape]
     # pad out with reflection
-    pad_img = fft_pad(image, fshape, "reflect")
+    pad_data = fft_pad(data, fshape, "reflect")
     # calculate padding
     padding = tuple(_calc_pad(o, n)
-                    for o, n in zip(image.shape, pad_img.shape))
+                    for o, n in zip(data.shape, pad_data.shape))
     # so that we can calculate the cropping, maybe this should be integrated
     # into `fft_pad` ...
     fslice = tuple(slice(s, -e) if e != 0 else slice(s, None)
                    for s, e in padding)
-    if psf.shape != pad_img.shape:
-        # its been assumed that the background of the psf has already been
-        # removed and that the psf has already been centered
-        psf = fft_pad(psf, pad_img.shape, mode='constant')
-    otf = rfftn(ifftshift(psf), pad_img.shape, **kwargs)
-    k_image = rfftn(pad_img, pad_img.shape, **kwargs)
-    blurred_image = irfftn(otf * k_image, pad_img.shape, **kwargs)
-    return blurred_image[fslice]
+    if kernel.shape != pad_data.shape:
+        # its been assumed that the background of the kernel has already been
+        # removed and that the kernel has already been centered
+        kernel = fft_pad(kernel, pad_data.shape, mode='constant')
+    k_kernel = rfftn(ifftshift(kernel), pad_data.shape, **kwargs)
+    k_data = rfftn(pad_data, pad_data.shape, **kwargs)
+    convolve_data = irfftn(k_kernel * k_data, pad_data.shape, **kwargs)
+    # return data with same shape as original data
+    return convolve_data[fslice]
 
 
 def win_nd(size, win_func=sp.signal.hann, **kwargs):
@@ -455,11 +472,6 @@ def fft_gaussian_filter(img, sigma):
     # This doesn't help agreement but it will make things faster
     # pull the shape
     s1 = np.array(img.shape)
-    # if any of the sizes is 32 or smaller, revert to proper filter
-    if any(s1 < 33):
-        warnings.warn(("Input is small along a dimension,"
-                       " will revert to `gaussian_filter`"))
-        return gaussian_filter(img, sigma)
     # s2 = np.array([int(s * 4) for s in _normalize_sequence(sigma, img.ndim)])
     shape = s1  # + s2 - 1
     # calculate a nice shape

@@ -1,6 +1,7 @@
 from nose.tools import *
 import numpy as np
-from numpy.testing import assert_allclose, assert_almost_equal, assert_approx_equal
+from numpy.testing import (assert_allclose, assert_almost_equal,
+                           assert_approx_equal)
 from itertools import product
 import unittest
 from scipy.signal import signaltools as sig
@@ -120,32 +121,14 @@ def test_anscombe():
 # need to move these into a test class
 def test_fft_gaussian_filter():
     """Test the gaussian filter"""
-    data = np.random.randn(100, 100, 100)
+    data = np.random.randn(128, 128, 128)
     sigmas = (np.random.random(data.ndim) + 1) * 2
     fftg = fft_gaussian_filter(data, sigmas)
-    fftc = gaussian_filter(data, sigmas)
-    # there's an edge effect that I can't track down maybe its
-    # in fourier_gaussian
-    fslice = (slice(16, -16), ) * data.ndim
-    assert_allclose(fftg[fslice], fftc[fslice], 1e-7, 3e-5)
-
-
-def test_fft_gaussian_filter_small():
-    """make sure fft_gaussian_filter defaults to regular when input is small"""
-    data = np.random.randn(32, 32, 512)
-    sigmas = (np.random.random(data.ndim) + 1) * 2
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        fftg = fft_gaussian_filter(data, sigmas)
-    fftc = gaussian_filter(data, sigmas)
-    assert_allclose(fftg, fftc)
-
-
-def test_fft_gaussian_filter_small_warn():
-    """make sure fft_gaussian_filter defaults to regular when input is small"""
-    data = np.random.randn(32, 32, 512)
-    sigmas = (np.random.random(data.ndim) + 1) * 2
-    assert_warns(UserWarning, fft_gaussian_filter, data, sigmas)
+    # The fft_convolution is equivalent to wrapping around
+    # and its inherently more accurate so we need to truncate
+    # the kernel for the gaussian filter further out.
+    fftc = gaussian_filter(data, sigmas, mode="wrap", truncate=32)
+    assert_allclose(fftg, fftc, err_msg="sigmas = {}".format(sigmas))
 
 
 def _turn_slices_into_list(slice_list):
@@ -190,3 +173,14 @@ def test_slice_maker_center():
         print(data_crop)
         print(ifftshift(data_crop))
         assert_equal(ifftshift(data_crop)[0, 0], 1, ifftshift(data_crop))
+
+
+def test_padding_slices():
+    """Make sure we can reverse things"""
+    oldshape = tuple(np.random.randint(64, 256 - 64, 2))
+    newshape = tuple(np.random.randint(s, s * 2) for s in oldshape)
+    data = np.random.randn(*oldshape)
+    new_data = fft_pad(data, newshape)
+    padding, slices = padding_slices(newshape, oldshape)
+    assert np.all(data == new_data[slices])
+
