@@ -9,9 +9,7 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import scipy as sp
-<<<<<<< HEAD
 import pandas as pd
-=======
 import re
 import io
 import requests
