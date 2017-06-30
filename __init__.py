@@ -16,7 +16,6 @@ import re
 import io
 import requests
 from skimage.external import tifffile as tif
->>>>>>> origin/master
 import warnings
 from scipy.optimize import curve_fit
 from scipy.ndimage.fourier import fourier_gaussian
@@ -602,4 +601,3 @@ def url_tifread(url):
     """Read a tif into memory from a url"""
     r = requests.get(url)
     return tif.imread(io.BytesIO(r.content))
->>>>>>> origin/master
