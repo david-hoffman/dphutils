@@ -9,8 +9,16 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import scipy as sp
+<<<<<<< HEAD
 import pandas as pd
+=======
+import re
+import io
+import requests
+from skimage.external import tifffile as tif
+>>>>>>> origin/master
 import warnings
+from scipy.optimize import curve_fit
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage._ni_support import _normalize_sequence
@@ -515,6 +523,83 @@ def fft_gaussian_filter(img, sigma):
     # inverse FFT and return.
     return irfftn(filt_kimg, fshape)[fslice]
 
+<<<<<<< HEAD
 # def read_system_monitors(path):
 #     data = pd.read_csv(path)
 #     
+=======
+
+def exponent(xdata, amp, rate, offset):
+    """Utility function to fit nonlinearly"""
+    return amp * np.exp(-rate * xdata) + offset
+
+
+def _estimate_exponent_params(data):
+    """utility to estimate sine params"""
+    xdata = np.arange(len(data))
+    offset = np.nanmin(data)
+    data_corr = data - offset
+    log_data_corr = np.log(data_corr)
+    valid_pnts = np.isfinite(log_data_corr)
+    m, b = np.polyfit(xdata[valid_pnts], log_data_corr[valid_pnts], 1)
+    return np.nan_to_num((np.exp(b), -m, offset))
+
+
+def exponent_fit(data):
+    """Utility function that fits data to the sine function
+
+    Assumes evenaly spaced data.
+
+    Parameters
+    ----------
+    data : ndarray (1d)
+        data that can be modeled as a single frequency sinusoid
+    periods : numeric
+        Estimated number of periods the sine wave covers
+
+    Returns
+    -------
+    popt : ndarray
+        optimized parameters for the sine wave
+        - amplitude
+        - frequency
+        - phase
+        - offset
+    pcov : ndarray
+        covariance of optimized paramters
+    """
+    # only deal with finite data
+    # NOTE: could use masked wave here.
+    finite_pnts = np.isfinite(data)
+    data_fixed = data[finite_pnts]
+    # we need at least 4 data points to fit
+    if len(data_fixed) > 3:
+        # we can't fit data with less than 4 points
+        # make x-wave
+        x = np.arange(len(data))[finite_pnts]
+        # make guesses
+        pguess = _estimate_exponent_params(data)
+        # The jacobian actually slows down the fitting my guess is there
+        # aren't generally enough points to make it worthwhile
+        return curve_fit(exponent, x, data_fixed, p0=pguess, maxfev=2000)
+        # fix signs, we want phase to be positive always
+
+        # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
+        #                        Dfun=sine_jac, col_deriv=True)
+    else:
+        raise RuntimeError("Not enough good points to fit.")
+
+
+def get_tif_urls(baseurl):
+    """Return all the links from a webpage with .tif"""
+    r = requests.get(baseurl)
+    links = re.findall('"([^"]*\.tif)"', r.content.decode())
+    head = "/".join(r.url.split("/")[:3])
+    return [head + l for l in links]
+
+
+def url_tifread(url):
+    """Read a tif into memory from a url"""
+    r = requests.get(url)
+    return tif.imread(io.BytesIO(r.content))
+>>>>>>> origin/master
