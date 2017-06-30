@@ -9,6 +9,7 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import scipy as sp
+import pandas as pd
 import warnings
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage.filters import gaussian_filter
@@ -26,6 +27,30 @@ except ImportError:
                            rfftn, irfftn)
     FFTW = False
 eps = np.finfo(float).eps
+
+
+def bin_ndarray(ndarray, new_shape, operation='sum'):
+    """
+    Bins an ndarray in all axes based on the target shape, by summing or
+        averaging.
+
+    Number of output dimensions must match number of input dimensions and
+        new axes must divide old ones.
+    """
+    operation = operation.lower()
+    if operation not in {'sum', 'mean'}:
+        raise ValueError("Operation not supported.")
+    if ndarray.ndim != len(new_shape):
+        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape,
+                                                           new_shape))
+    compression_pairs = [(d, c // d) for d, c in zip(new_shape,
+                                                     ndarray.shape)]
+    flattened = [l for p in compression_pairs for l in p]
+    ndarray = ndarray.reshape(flattened)
+    for i in range(len(new_shape)):
+        op = getattr(ndarray, operation)
+        ndarray = op(-1 * (i + 1))
+    return ndarray
 
 
 def scale(data, dtype=None):
@@ -489,3 +514,7 @@ def fft_gaussian_filter(img, sigma):
     filt_kimg = fourier_gaussian(kimg, sigma, pad_img.shape[-1])
     # inverse FFT and return.
     return irfftn(filt_kimg, fshape)[fslice]
+
+# def read_system_monitors(path):
+#     data = pd.read_csv(path)
+#     
