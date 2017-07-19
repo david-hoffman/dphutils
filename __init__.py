@@ -520,11 +520,9 @@ def fft_gaussian_filter(img, sigma):
     # inverse FFT and return.
     return irfftn(filt_kimg, fshape)[fslice]
 
-<<<<<<< HEAD
 # def read_system_monitors(path):
 #     data = pd.read_csv(path)
 #     
-=======
 
 def exponent(xdata, amp, rate, offset):
     """Utility function to fit nonlinearly"""
