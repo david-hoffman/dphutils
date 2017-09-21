@@ -529,18 +529,23 @@ def exponent(xdata, amp, rate, offset):
     return amp * np.exp(-rate * xdata) + offset
 
 
-def _estimate_exponent_params(data):
+def _estimate_exponent_params(data, xdata):
     """utility to estimate sine params"""
-    xdata = np.arange(len(data))
-    offset = np.nanmin(data)
-    data_corr = data - offset
-    log_data_corr = np.log(data_corr)
-    valid_pnts = np.isfinite(log_data_corr)
-    m, b = np.polyfit(xdata[valid_pnts], log_data_corr[valid_pnts], 1)
-    return np.nan_to_num((np.exp(b), -m, offset))
+    if data[0] > data[-1]:
+        # decay
+        offset = np.nanmin(data)
+        data_corr = data - offset
+        log_data_corr = np.log(data_corr)
+        valid_pnts = np.isfinite(log_data_corr)
+        m, b = np.polyfit(xdata[valid_pnts], log_data_corr[valid_pnts], 1)
+        return np.nan_to_num((np.exp(b), -m, offset))
+    else:
+        amp, rate, offset = _estimate_exponent_params(-data, xdata)
+        return np.array((-amp, rate, -offset))
 
 
-def exponent_fit(data):
+
+def exponent_fit(data, xdata=None):
     """Utility function that fits data to the sine function
 
     Assumes evenaly spaced data.
@@ -565,18 +570,20 @@ def exponent_fit(data):
     """
     # only deal with finite data
     # NOTE: could use masked wave here.
+    if xdata is None:
+        xdata = np.arange(len(data))
+
     finite_pnts = np.isfinite(data)
     data_fixed = data[finite_pnts]
+    xdata_fixed = xdata[finite_pnts]
     # we need at least 4 data points to fit
     if len(data_fixed) > 3:
         # we can't fit data with less than 4 points
-        # make x-wave
-        x = np.arange(len(data))[finite_pnts]
         # make guesses
-        pguess = _estimate_exponent_params(data)
+        pguess = _estimate_exponent_params(data_fixed, xdata_fixed)
         # The jacobian actually slows down the fitting my guess is there
         # aren't generally enough points to make it worthwhile
-        return curve_fit(exponent, x, data_fixed, p0=pguess, maxfev=2000)
+        return curve_fit(exponent, xdata_fixed, data_fixed, p0=pguess, maxfev=2000)
         # fix signs, we want phase to be positive always
 
         # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
