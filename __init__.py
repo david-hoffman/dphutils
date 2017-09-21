@@ -544,7 +544,6 @@ def _estimate_exponent_params(data, xdata):
         return np.array((-amp, rate, -offset))
 
 
-
 def exponent_fit(data, xdata=None):
     """Utility function that fits data to the sine function
 
