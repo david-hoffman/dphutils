@@ -9,16 +9,12 @@ Copyright (c) 2016, David Hoffman
 
 import numpy as np
 import scipy as sp
-import pandas as pd
 import re
 import io
 import requests
 from skimage.external import tifffile as tif
-import warnings
 from scipy.optimize import curve_fit
 from scipy.ndimage.fourier import fourier_gaussian
-from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 try:
     import pyfftw
@@ -168,6 +164,18 @@ def radial_profile(data, center=None, binsize=1.0):
     radial_std = np.sqrt(tbin2 / nr - radial_mean**2)
     # return them
     return radial_mean, radial_std
+
+
+def mode(data):
+    """Quickly find the mode of data
+
+    up to 1000 times faster than scipy mode
+    but not nearly as feature rich
+
+    Note: we can vectorize this to work on different
+    axes with numba"""
+    # will not work with negative numbers (for now)
+    return np.bincount(data.ravel()).argmax()
 
 
 def slice_maker(y0, x0, width):
