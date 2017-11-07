@@ -141,7 +141,7 @@ def _turn_slices_into_list(slice_list):
 
 def test_slice_maker_negative():
     """Make sure slice_maker doesn't return negative indices"""
-    slices = _turn_slices_into_list(slice_maker(10, -10, 10))
+    slices = _turn_slices_into_list(slice_maker((10, -10), 10))
     assert_true((slices >= 0).all(), slices)
 
 
@@ -150,14 +150,14 @@ def test_slice_maker_complex_input():
     for y0, x0, width in product(*(((10, 10j),) * 3)):
         if np.isrealobj((y0, x0, width)):
             continue
-        assert_raises(TypeError, slice_maker, y0, x0, width)
+        assert_raises(TypeError, slice_maker, (y0, x0), width)
 
 
 def test_slice_maker_float_input():
     """Make sure floats are rounded properly"""
     for i in range(10):
         y0, x0, width = np.random.random(3) * 100
-        slice_list = _turn_slices_into_list(slice_maker(y0, x0, width))
+        slice_list = _turn_slices_into_list(slice_maker((y0, x0), width))
         assert_true(np.issubdtype(slice_list.dtype, int))
 
 
@@ -168,7 +168,7 @@ def test_slice_maker_center():
         center_loc = tuple(np.random.randint(64, 256 - 64, 2))
         data[center_loc] = 1
         width = np.random.randint(16, 32)
-        slices = slice_maker(*center_loc, width)
+        slices = slice_maker(center_loc, width)
         data_crop = data[slices]
         print(data_crop)
         print(ifftshift(data_crop))

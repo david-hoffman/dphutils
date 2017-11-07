@@ -15,6 +15,7 @@ import requests
 from skimage.external import tifffile as tif
 from scipy.optimize import curve_fit
 from scipy.ndimage.fourier import fourier_gaussian
+from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 try:
     import pyfftw
@@ -178,7 +179,7 @@ def mode(data):
     return np.bincount(data.ravel()).argmax()
 
 
-def slice_maker(y0, x0, width):
+def slice_maker(xs, ws):
     """
     A utility function to generate slices for later use.
 
@@ -203,34 +204,35 @@ def slice_maker(y0, x0, width):
 
     Examples
     --------
-    >>> slice_maker(30,20,10)
+    >>> slice_maker((30,20),10)
     [slice(25, 35, None), slice(15, 25, None)]
-    >>> slice_maker(30,20,25)
+    >>> slice_maker((30,20),25)
     [slice(18, 43, None), slice(8, 33, None)]
     """
-    if not np.isrealobj((y0, x0, width)):
+    # normalize inputs
+    xs = np.asarray(xs)
+    ws = np.asarray(_normalize_sequence(ws, len(xs)))
+    if not np.isrealobj((xs, ws)):
         raise TypeError("`slice_maker` only accepts real input")
-    if width < 0:
-        raise ValueError("width cannot be negative, width = {}".format(width))
+    if np.any(ws < 0):
+        raise ValueError("width cannot be negative, width = {}".format(ws))
     # ensure integers
-    y0, x0 = np.rint((y0, x0)).astype(int)
-    width = int(np.rint(width))
+    xs = np.rint(xs).astype(int)
+    ws = np.rint(ws).astype(int)
     # use _calc_pad
-    half2, half1 = _calc_pad(0, width)
-    ystart = y0 - half1
-    xstart = x0 - half1
-    yend = y0 + half2
-    xend = x0 + half2
-    assert ystart <= yend, "ystart > yend"
-    assert xstart <= xend, "xstart > xend"
-    if yend <= 0:
-        ystart, yend = 0, 0
-    if xend <= 0:
-        xstart, xend = 0, 0
-    # the max calls are to make slice_maker play nice with edges.
-    toreturn = [slice(max(0, ystart), yend), slice(max(0, xstart), xend)]
+    toreturn = []
+    for x, w in zip(xs, ws):
+        half2, half1 = _calc_pad(0, w)
+        xstart = x - half1
+        xend = x + half2
+        assert xstart <= xend, "xstart > xend"
+        if xend <= 0:
+            xstart, xend = 0, 0
+        # the max calls are to make slice_maker play nice with edges.
+        toreturn.append(slice(max(0, xstart), xend))
     # return a list of slices
     return toreturn
+
 
 
 def fft_pad(array, newshape=None, mode='median', **kwargs):
