@@ -534,13 +534,27 @@ def fft_gaussian_filter(img, sigma):
 #     data = pd.read_csv(path)
 #     
 
+def multi_exp(xdata, *args):
+    """Power and exponent"""
+    odd = len(args) % 2
+    if odd:
+        offset = args[-1]
+    else:
+        offset = 0
+    res = np.ones_like(xdata) * offset
+    for i in range(0, len(args) - odd, 2):
+        a, k = args[i:i + 2]
+        res += a * np.exp(-k * xdata)
+    return res
+
+
 def exponent(xdata, amp, rate, offset):
     """Utility function to fit nonlinearly"""
-    return amp * np.exp(-rate * xdata) + offset
+    return multi_exp(xdata, amp, rate, offset)
 
 
 def _estimate_exponent_params(data, xdata):
-    """utility to estimate sine params"""
+    """utility to estimate exponent params"""
     if data[0] > data[-1]:
         # decay
         offset = np.nanmin(data)
@@ -553,27 +567,31 @@ def _estimate_exponent_params(data, xdata):
         amp, rate, offset = _estimate_exponent_params(-data, xdata)
         return np.array((-amp, rate, -offset))
 
+def _estimate_components(data, xdata):
+    """"""
+    raise NotImplementedError
 
-def exponent_fit(data, xdata=None):
-    """Utility function that fits data to the sine function
+def exponent_fit(data, xdata=None, offset=True):
+    """Utility function that fits data to the exponent function"""
+    return multi_exp_fit(data, xdata, components=1, offset=offset)
+
+def multi_exp_fit(data, xdata=None, components=None, offset=True):
+    """Utility function that fits data to the exponent function
 
     Assumes evenaly spaced data.
 
     Parameters
     ----------
     data : ndarray (1d)
-        data that can be modeled as a single frequency sinusoid
-    periods : numeric
-        Estimated number of periods the sine wave covers
+        data that can be modeled as a single exponential decay
+    xdata : numeric
+        x axis for fitting
 
     Returns
     -------
     popt : ndarray
-        optimized parameters for the sine wave
-        - amplitude
-        - frequency
-        - phase
-        - offset
+        optimized parameters for the exponent wave
+        (a0, k0, a1, k1, ... , an, kn, offset)
     pcov : ndarray
         covariance of optimized paramters
     """
@@ -582,6 +600,9 @@ def exponent_fit(data, xdata=None):
     if xdata is None:
         xdata = np.arange(len(data))
 
+    if components is None:
+        components = _estimate_components(data, xdata)
+
     finite_pnts = np.isfinite(data)
     data_fixed = data[finite_pnts]
     xdata_fixed = xdata[finite_pnts]
@@ -589,14 +610,27 @@ def exponent_fit(data, xdata=None):
     if len(data_fixed) > 3:
         # we can't fit data with less than 4 points
         # make guesses
-        pguess = _estimate_exponent_params(data_fixed, xdata_fixed)
+        if components > 1:
+            split_points = np.logspace(np.log(xdata_fixed[xdata_fixed > 0].min()), np.log(xdata_fixed.max()),
+                components + 2, base=np.e)
+            # convert to indices
+            split_idxs = np.searchsorted(xdata_fixed, split_points)
+            # add endpoints, make sure we don't have 0 twice
+            split_idxs = [None] + list(split_idxs[1:-1]) + [None]
+            ranges = [slice(start, stop) for start, stop in zip(split_idxs[:-1], split_idxs[1:])]
+        else:
+            ranges = [slice(None)]
+        pguesses = [_estimate_exponent_params(data_fixed[s], xdata_fixed[s]) for s in ranges]
+        # clear out the offsets
+        pguesses = [pguess[:-1] for pguess in pguesses[:-1]] + pguesses[-1:]
+        # add them together
+        pguess = np.concatenate(pguesses)
+        if not offset:
+            # kill the offset component
+            pguess = pguess[:-1]
         # The jacobian actually slows down the fitting my guess is there
         # aren't generally enough points to make it worthwhile
-        return curve_fit(exponent, xdata_fixed, data_fixed, p0=pguess, maxfev=2000)
-        # fix signs, we want phase to be positive always
-
-        # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
-        #                        Dfun=sine_jac, col_deriv=True)
+        return curve_fit(multi_exp, xdata_fixed, data_fixed, p0=pguess, maxfev=2000)
     else:
         raise RuntimeError("Not enough good points to fit.")
 
