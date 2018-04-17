@@ -17,6 +17,9 @@ from scipy.optimize import curve_fit
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
+
+from .llc import jit_filter_function, jit_filter1d_function
+
 try:
     import pyfftw
     from pyfftw.interfaces.numpy_fft import (fftshift, ifftshift, fftn, ifftn,
@@ -31,14 +34,40 @@ except ImportError:
 eps = np.finfo(float).eps
 
 
-def bin_ndarray(ndarray, new_shape, operation='sum'):
+def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation='sum'):
     """
     Bins an ndarray in all axes based on the target shape, by summing or
         averaging.
 
     Number of output dimensions must match number of input dimensions and
         new axes must divide old ones.
+
+    Parameters
+    ----------
+    ndarray : array like object (can be dask array)
+    new_shape : iterable (optional)
+        The new size to bin the data to
+    bin_size : scalar or iterable (optional)
+        The size of the new bins
+
+    Returns
+    -------
+    binned array.
     """
+    if new_shape is None:
+        # if new shape isn't passed then calculate it
+        if bin_size is None:
+            # if bin_size isn't passed then raise error
+            raise ValueError("Either new shape or bin_size must be passed")
+        # pull old shape
+        old_shape = np.array(ndarray.shape)
+        # calculate new shape, integer division!
+        newshape = old_shape // bin_size
+        # calculate the crop window
+        crop = tuple(slice(None, -r) for r in old_shape % bin_size)
+        # crop the input array
+        ndarray = ndarray[crop]
+    # proceed as before
     operation = operation.lower()
     if operation not in {'sum', 'mean'}:
         raise ValueError("Operation not supported.")
