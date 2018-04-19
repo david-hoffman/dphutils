@@ -62,9 +62,9 @@ def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation='sum'):
         # pull old shape
         old_shape = np.array(ndarray.shape)
         # calculate new shape, integer division!
-        newshape = old_shape // bin_size
+        new_shape = old_shape // bin_size
         # calculate the crop window
-        crop = tuple(slice(None, -r) for r in old_shape % bin_size)
+        crop = tuple(slice(None, -r) if r else slice(None) for r in old_shape % bin_size)
         # crop the input array
         ndarray = ndarray[crop]
     # proceed as before
