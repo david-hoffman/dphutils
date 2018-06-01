@@ -18,7 +18,7 @@ from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 
-from .llc import jit_filter_function, jit_filter1d_function
+# from .llc import jit_filter_function, jit_filter1d_function
 
 try:
     import pyfftw
@@ -116,7 +116,7 @@ def scale(data, dtype=None):
     >>> b.min()
     0
     """
-    if np.issubdtype(data.dtype, np.complex):
+    if np.issubdtype(data.dtype, np.complexfloating):
         raise TypeError("`scale` is not defined for complex values")
     dmin = np.nanmin(data)
     dmax = np.nanmax(data)
