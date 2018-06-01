@@ -1,9 +1,14 @@
 # https://github.com/jni/llc-tools
 
 import numba
+import numpy as np
 from numba import cfunc, carray
 from numba.types import intc, CPointer, float64, intp, voidptr
 from scipy import LowLevelCallable
+
+import platform
+if platform.system() == "Windows":
+    raise RuntimeError("This doesn't work on Windows yet.")
 
 
 def jit_filter_function(filter_function):
@@ -29,3 +34,8 @@ def jit_filter1d_function(filter_function):
         jitted_function(in_values, out_values)
         return 1
     return LowLevelCallable(wrapped.ctypes)
+
+
+# @jit_filter_function
+# def mode(values):
+#     return np.bincount(values.astype(np.uint8).ravel()).argmax()
