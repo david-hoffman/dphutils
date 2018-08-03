@@ -260,7 +260,7 @@ def slice_maker(xs, ws):
         # the max calls are to make slice_maker play nice with edges.
         toreturn.append(slice(max(0, xstart), xend))
     # return a list of slices
-    return toreturn
+    return tuple(toreturn)
 
 
 
@@ -290,7 +290,7 @@ def padding_slices(oldshape, newshape):
     padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
                     for o, n in zip(oldshape, newshape))
     # Make a crop list, if any of the padding is negative
-    slices = [_calc_crop(s1, s2) for s1, s2 in padding]
+    slices = tuple(_calc_crop(s1, s2) for s1, s2 in padding)
     # leave 0 pad width where it was cropped
     padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
     return padding, slices
@@ -676,3 +676,30 @@ def url_tifread(url):
     """Read a tif into memory from a url"""
     r = requests.get(url)
     return tif.imread(io.BytesIO(r.content))
+
+
+def imread_bioformats(path):
+    """Thin wrapper around bioformats, slow and shitty,
+    but works in a pinch, only reads z stack -- no time"""
+    # import modules tp ise
+    import javabridge
+    import bioformats
+    import gc
+    import itertools
+    # start the jave VM with the appropriate classes loaded
+    javabridge.start_vm(class_path=bioformats.JARS)
+    # init the reader
+    with bioformats.ImageReader(path) as reader:
+        # init container
+        data = []
+        for i in itertool.count():
+            try:
+                data.append(reader.read(z=i, rescale=False))
+            except javabridge.JavaException:
+                # reached end of file, break
+                break
+    # clean up a little
+    javabridge.kill_vm()
+    gc.collect()
+    # return ndarray
+    return np.asarray(data)
