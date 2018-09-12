@@ -13,11 +13,12 @@ import re
 import io
 import requests
 from skimage.external import tifffile as tif
-from scipy.optimize import curve_fit, minimize_scalar
+from scipy.optimize import curve_fit, minimize_scalar, minimize
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 from scipy.special import zeta
+from scipy.stats import nbinom
 
 import tqdm
 
@@ -1048,7 +1049,7 @@ class PowerLaw(object):
 
         return C, alpha
 
-    def plot(self, ax=None, density=True):
+    def plot(self, ax=None, density=True, norm=False):
         """plot data"""
         x, y, N = self._convert_to_probability_discrete()
 
@@ -1066,18 +1067,29 @@ class PowerLaw(object):
             ls = None
         # calculate fit
         power_law = self._power_law_fit_discrete(x)
+
+        ax.set_xlabel("Number of frames")
         if not density:
             y *= N
             power_law *= N
             ymin = 0.5
+            ax.set_ylabel("Occurences (#)")
+        elif norm:
+            ymax = y[0]
+            y /= ymax
+            power_law /= ymax
+            ymin = 0.5 * y.min()
+            ax.set_ylabel("Fraction of Maximum")
         else:
             ymin = 0.5 / N
+            ax.set_ylabel("Frequency")
 
         ax.loglog(x, y, linestyle=ls, label="Data")
         ax.loglog(x, power_law, label=r"$\alpha = {:.2f}$".format(self.alpha))
         ax.set_ylim(ymin=ymin)
 
         ax.axvline(self.xmin, color="y", linewidth=4, alpha=0.5, label="$x_{{min}} = {}$".format(self.xmin))
+
         try:
             ax.axvline(self.xmax, color="y", linewidth=4, alpha=0.5, label="$x_{{max}} = {}$".format(self.xmax))
         except AttributeError:
@@ -1102,6 +1114,39 @@ def fit_ztp(data):
         opt = minimize_scalar(negloglikelihood)
 
     if not opt.success:
-        raise RuntimeError
+        raise RuntimeError("Fitting zero-truncated poisson failed")
+
+    return opt.x
+
+
+def NegBinom(a, m):
+    """convert scipy's definition to mean and shape"""
+    r = a
+    p = m / (m + r)
+    return nbinom(r, 1 - p)
+
+
+def negloglikelihoodNB(args, x):
+    """Negative log likelihood for negative binomial"""
+    a, m = args
+    numerator = NegBinom(a, m).pmf(x)
+    return -np.log(numerator).sum()
+
+
+def negloglikelihoodZTNB(args, x):
+    """Negative log likelihood for zero truncated negative binomial"""
+    a, m = args
+    denom = 1 - NegBinom(a, m).pmf(0)
+
+    return len(x) * np.log(denom) + negloglikelihoodNB(args, x)
+
+
+def fit_ztnb(data, x0=(0.5, 0.5)):
+    """Fit the data assuming it follows a zero-truncated Negative Binomial model"""
+
+    opt = minimize(negloglikelihoodZTNB, x0, (data, ), bounds=((0, np.inf), (0, np.inf)))
+
+    if not opt.success:
+        raise RuntimeError("Fitting zero-truncated negative binomial", opt)
 
     return opt.x
