@@ -7,6 +7,7 @@ This is for small utility functions that don't have a proper home yet
 Copyright (c) 2016, David Hoffman
 """
 
+import subprocess
 import numpy as np
 import scipy as sp
 import re
@@ -38,6 +39,18 @@ except ImportError:
                            rfftn, irfftn)
     FFTW = False
 eps = np.finfo(float).eps
+
+
+def get_git(path="."):
+    try:
+        # we slice to remove trailing new line.
+        return subprocess.check_output(["git", "--git-dir=" + path + "/.git", "describe", "--long", "--always"]).decode()[:-1]
+    except subprocess.CalledProcessError:
+        return "Unknown"
+
+
+def generate_meta_data():
+    pass
 
 
 def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation='sum'):
