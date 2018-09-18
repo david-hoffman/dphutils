@@ -1175,15 +1175,17 @@ def find_prime_facs(n):
             n = n / i
             i = i - 1
         i += 1
-    return list_of_factors
+    return np.array(list_of_factors)
 
 
 def montage(stack):
     """Take a stack and a new shape and cread a montage"""
     # assume data is ordered as color, tiles, ny, nx
     ntiles, ny, nx = stack.shape
-    # Find the largest prime factor
-    dx = find_prime_facs(ntiles)[-1]
+    # Find the prime factor that makes the montage most square
+    primes = find_prime_facs(ntiles)
+    idx = abs(primes - np.sqrt(ntiles)).argmin()
+    dx = primes[idx]
     dy = ntiles // dx
     new_shape = dy, dx, ny, nx
     # sanity check
