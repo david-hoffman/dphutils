@@ -1163,3 +1163,34 @@ def fit_ztnb(data, x0=(0.5, 0.5)):
         raise RuntimeError("Fitting zero-truncated negative binomial", opt)
 
     return opt.x
+
+
+def find_prime_facs(n):
+    """Find the prime factors of n"""
+    list_of_factors = []
+    i = 2
+    while n > 1:
+        if n % i == 0:
+            list_of_factors.append(i)
+            n = n / i
+            i = i - 1
+        i += 1
+    return list_of_factors
+
+
+def montage(stack):
+    """Take a stack and a new shape and cread a montage"""
+    # assume data is ordered as color, tiles, ny, nx
+    ntiles, ny, nx = stack.shape
+    # Find the largest prime factor
+    dx = find_prime_facs(ntiles)[-1]
+    dy = ntiles // dx
+    new_shape = dy, dx, ny, nx
+    # sanity check
+    assert dy * dx == ntiles, "Number of tiles, {}, doesn't match montage dimensions ({}, {})".format(ntiles, dy, dx)
+    # reshape the stack
+    reshaped_stack = stack.reshape(new_shape)
+    # align the tiles
+    reshaped_stack = np.rollaxis(reshaped_stack, 1, 3)
+    # merge and return.
+    return reshaped_stack.reshape(dy * ny, dx * nx)
