@@ -14,12 +14,14 @@ import re
 import io
 import requests
 from skimage.external import tifffile as tif
-from scipy.optimize import curve_fit, minimize_scalar, minimize
+from scipy.optimize import minimize_scalar, minimize
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
 from scipy.signal import signaltools as sig
 from scipy.special import zeta
 from scipy.stats import nbinom
+
+from .lm import curve_fit
 
 import tqdm
 
@@ -589,7 +591,7 @@ def multi_exp(xdata, *args):
         offset = args[-1]
     else:
         offset = 0
-    res = np.ones_like(xdata) * offset
+    res = np.ones_like(xdata, dtype=float) * offset
     for i in range(0, len(args) - odd, 2):
         a, k = args[i:i + 2]
         res += a * np.exp(-k * xdata)
@@ -644,7 +646,7 @@ def exponent_fit(data, xdata=None, offset=True):
     return multi_exp_fit(data, xdata, components=1, offset=offset)
 
 
-def multi_exp_fit(data, xdata=None, components=None, offset=True):
+def multi_exp_fit(data, xdata=None, components=None, offset=True, **kwargs):
     """Utility function that fits data to the exponent function
 
     Assumes evenaly spaced data.
@@ -663,6 +665,9 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True):
         (a0, k0, a1, k1, ... , an, kn, offset)
     pcov : ndarray
         covariance of optimized paramters
+
+
+    label_base = "$y(t) = " + "{:+.3f} e^{{-{:.3g}t}}" * (len(popt) // 2) + " {:+.0f}$" * (len(popt) % 2)
     """
     # only deal with finite data
     # NOTE: could use masked wave here.
@@ -681,7 +686,7 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True):
         # make guesses
         if components > 1:
             split_points = np.logspace(np.log(xdata_fixed[xdata_fixed > 0].min()), np.log(xdata_fixed.max()),
-                components + 2, base=np.e)
+                components + 1, base=np.e)
             # convert to indices
             split_idxs = np.searchsorted(xdata_fixed, split_points)
             # add endpoints, make sure we don't have 0 twice
@@ -699,7 +704,7 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True):
             pguess = pguess[:-1]
         # The jacobian actually slows down the fitting my guess is there
         # aren't generally enough points to make it worthwhile
-        return curve_fit(multi_exp, xdata_fixed, data_fixed, p0=pguess, maxfev=2000)
+        return curve_fit(multi_exp, xdata_fixed, data_fixed, p0=pguess, jac=multi_exp_jac, **kwargs)
     else:
         raise RuntimeError("Not enough good points to fit.")
 
@@ -1074,10 +1079,6 @@ class PowerLaw(object):
             fig = plt.gcf()
 
         # plot
-        if self._discrete:
-            ls = "steps-mid"
-        else:
-            ls = None
         # calculate fit
         power_law = self._power_law_fit_discrete(x)
 
@@ -1097,7 +1098,7 @@ class PowerLaw(object):
             ymin = 0.5 / N
             ax.set_ylabel("Frequency")
 
-        ax.loglog(x, y, linestyle=ls, label="Data")
+        ax.loglog(x, y, ".", label="Data")
         ax.loglog(x, power_law, label=r"$\alpha = {:.2f}$".format(self.alpha))
         ax.set_ylim(ymin=ymin)
 
