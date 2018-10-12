@@ -64,7 +64,7 @@ def _chi2_mle(f):
 
     # calculate the parts of chi2
     part1 = (f - y).sum(0)
-    
+
     # make sure to change nans and infs to nums
     with np.errstate(invalid="ignore", divide="ignore"):
         part2 = - (y * np.log(f / y))
@@ -88,7 +88,7 @@ def _update_mle(x0, f, Dfun):
     valid_points = np.isfinite(y_f2) & np.isfinite(y_f)
     y_f[~valid_points] = 0
     y_f2[~valid_points] = 0
-    
+
     j = Dfun(x0)
     # calculate the linear term of Hessian
     # a shape (nparams, nparams)
@@ -197,9 +197,9 @@ def make_lambda(j, d0):
 
 
 def lm(func, x0, args=(), Dfun=None, full_output=False,
-            col_deriv=True, ftol=1.49012e-8, xtol=1.49012e-8,
-            gtol=0.0, maxfev=None, epsfcn=None, factor=100, diag=None,
-            method="ls"):
+       col_deriv=True, ftol=1.49012e-8, xtol=1.49012e-8,
+       gtol=0.0, maxfev=None, epsfcn=None, factor=100, diag=None,
+       method="ls"):
     """A more thorough implementation of levenburg-marquet
     for gaussian Noise
     ::
@@ -297,7 +297,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
                   "columns of\n  the Jacobian to machine "
                   "precision." % gtol, ValueError],
               'unknown': ["Unknown error.", TypeError]}
-    
+
     if maxfev is None:
         maxfev = 100 * (len(x0) + 1)
 
@@ -423,15 +423,15 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     else:
         # loop exited normally
         info = 5
-            
+
     if method == "mle":
         # remember we return the data with f?
         f = f[0]
 
-    logger.info("Ended with {} function evaluations".format(ev))
+    logger.info("Ended with {} function evaluations".format(ev + 1))
 
     infodict = dict(fvec=f, fjac=j, nfev=ev)
-    
+
     if info not in [1, 2, 3, 4] and not full_output:
         if info in [5, 6, 7, 8]:
             warnings.warn(errors[info][0], RuntimeWarning)
@@ -444,7 +444,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     errmsg = errors[info][0]
     logger.info(errmsg)
     popt, cov_x = x, None
-    
+
     if full_output:
         return popt, cov_x, infodict, errmsg, info
     else:
@@ -452,8 +452,8 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
 
 
 def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
-                  check_finite=True, bounds=(-np.inf, np.inf), method=None,
-                  jac=None, **kwargs):
+              check_finite=True, bounds=(-np.inf, np.inf), method=None,
+              jac=None, **kwargs):
     """
     Use non-linear least squares to fit a function, f, to data.
     Assumes ``ydata = poisson(f(xdata, *params))``
@@ -513,12 +513,12 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         provided. The method 'lm' won't work when the number of observations
         is less than the number of variables, use 'trf' or 'dogbox' in this
         case.
-        
+
         "ls", "mle"
         What type of estimator to use. Maximum likelihood ("mle") assumes that the noise
         in the measurement is poisson distributed while least squares ("ls") assumes
         normally distributed noise. "pyls" is a python implementation, for testing only
-        
+
         .. versionadded:: 0.17
     jac : callable, string or None, optional
         Function with signature ``jac(x, ...)`` which computes the Jacobian
@@ -530,7 +530,7 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         .. versionadded:: 0.18
     kwargs
         Keyword arguments passed to `leastsq` for ``method='lm'`` or
-        `least_squares` otherwise.""" 
+        `least_squares` otherwise."""
 
     # fix kwargs
     return_full = kwargs.pop('full_output', False)
@@ -539,14 +539,14 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
     if method in {'lm', 'trf', 'dogbox', None}:
         if can_full_output:
             kwargs['full_output'] = return_full
-            
+
         res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
-                  check_finite, bounds, method, jac, **kwargs)
+                                       check_finite, bounds, method, jac, **kwargs)
         if can_full_output:
             return res
         else:
             return res[0], res[1], None, "No error", 1
-    
+
     elif method == 'ls':
         _wrap_func = _wrap_func_ls
         _wrap_jac = _wrap_jac_ls
@@ -555,17 +555,26 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         _wrap_jac = _wrap_jac_mle
     else:
         raise TypeError("Method {} not recognized".format(method))
-    
-    if p0 is None:
-        raise NotImplementedError("You must give a guess")
+
+    if bounds != (-np.inf, np.inf):
+        raise NotImplementedError("Bounds has not been implemented")
+
     if sigma is not None:
         raise NotImplementedError("Weighting has not been implemented")
     else:
         transform = None
-        
+
     if jac is None:
         raise NotImplementedError("You need a Jacobian")
-        
+
+    # initialize p0 with standard LM
+    res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
+                                   check_finite, bounds, None, jac, **kwargs)
+
+    # grab p0
+    logger.info("Initialized p0")
+    p0 = res[0]
+
     # NaNs can not be handled
     if check_finite:
         ydata = np.asarray_chkfinite(ydata)
@@ -579,17 +588,14 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
             xdata = np.asarray_chkfinite(xdata)
         else:
             xdata = np.asarray(xdata)
-            
+
     func = _wrap_func(f, xdata, ydata, transform)
     if callable(jac):
         jac = _wrap_jac(jac, xdata, transform)
-    elif jac is None and method != 'lm':
-        jac = '2-point'
 
     res = lm(func, p0, Dfun=jac, full_output=1, method=method, **kwargs)
     popt, pcov, infodict, errmsg, info = res
     cost = np.sum(infodict['fvec'] ** 2)
-
 
     # Do Moore-Penrose inverse discarding zero singular values.
     _, s, VT = la.svd(infodict['fjac'], full_matrices=False)
