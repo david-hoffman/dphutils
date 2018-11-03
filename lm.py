@@ -7,7 +7,7 @@ A python implementation of Levenberg–Marquardt.
 exposes a drop in replacement for scipy.curve_fit and
 allows the user to fit their function by maximizing the
 maximum likelihood for poisson deviates rather than for
-gaussian deviates
+gaussian deviates, requires the jacobian to be defined.
 
 ### References
 1. Methods for Non-Linear Least Squares Problems (2nd ed.) http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=3215 (accessed Aug 18, 2017).
@@ -56,7 +56,7 @@ def _chi2_mle(f):
     model with gaussian deviates."""
     f, y = f
     if f.min() < 0:
-        logger.info("function has dropped below zero {}, this shouldn't happen".format(f.min()))
+        logger.debug("function has dropped below zero {}, this shouldn't happen".format(f.min()))
         return np.inf
 
     # don't include points where the data is less
@@ -341,7 +341,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     # lambda
     lambda_ = np.sqrt(x0.T @ dtd @ x0)
     if lambda_ <= 0 or ~np.isfinite(lambda_):
-        lambda_ = 100
+        lambda_ = np.array(100.0)
 
     # make our scaling factor
     # mu = factor * np.diagonal(a).max()
@@ -428,7 +428,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
         # remember we return the data with f?
         f = f[0]
 
-    logger.info("Ended with {} function evaluations".format(ev + 1))
+    logger.debug("Ended with {} function evaluations".format(ev + 1))
 
     infodict = dict(fvec=f, fjac=j, nfev=ev)
 
@@ -442,7 +442,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
                 raise errors['unknown'][1](errors['unknown'][0])
 
     errmsg = errors[info][0]
-    logger.info(errmsg)
+    logger.debug(errmsg)
     popt, cov_x = x, None
 
     if full_output:
@@ -542,10 +542,13 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
 
         res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
                                        check_finite, bounds, method, jac, **kwargs)
-        if can_full_output:
-            return res
-        else:
+        
+        # user has requested that full_output be returned, but the method
+        # isn't capable, fill in the blanks.
+        if return_full and not can_full_output:
             return res[0], res[1], None, "No error", 1
+        else:
+            return res
 
     elif method == 'ls':
         _wrap_func = _wrap_func_ls
@@ -572,7 +575,7 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
                                    check_finite, bounds, None, jac, **kwargs)
 
     # grab p0
-    logger.info("Initialized p0")
+    logger.debug("Initialized p0")
     p0 = res[0]
 
     # NaNs can not be handled

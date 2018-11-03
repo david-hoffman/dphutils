@@ -579,10 +579,6 @@ def fft_gaussian_filter(img, sigma):
     # inverse FFT and return.
     return irfftn(filt_kimg, fshape)[fslice]
 
-# def read_system_monitors(path):
-#     data = pd.read_csv(path)
-#     
-
 
 def multi_exp(xdata, *args):
     """Power and exponent"""
@@ -623,7 +619,11 @@ def exponent(xdata, amp, rate, offset):
 
 def _estimate_exponent_params(data, xdata):
     """utility to estimate exponent params"""
-    if data[0] > data[-1]:
+    assert np.isfinite(data).all(), "data is not finite"
+    assert np.isfinite(xdata).all(), "xdata is not finite"
+    assert len(data) == len(xdata), "Lengths don't match"
+    assert len(data), "there is no data"
+    if data[0] >= data[-1]:
         # decay
         offset = np.nanmin(data)
         data_corr = data - offset
@@ -686,7 +686,7 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True, **kwargs):
         # make guesses
         if components > 1:
             split_points = np.logspace(np.log(xdata_fixed[xdata_fixed > 0].min()), np.log(xdata_fixed.max()),
-                components + 1, base=np.e)
+                                       components + 1, base=np.e)
             # convert to indices
             split_idxs = np.searchsorted(xdata_fixed, split_points)
             # add endpoints, make sure we don't have 0 twice
@@ -902,10 +902,10 @@ class PowerLaw(object):
                     return power_sub.ks_statistics.min()
 
                 opt = minimize_scalar(func, bounds=(2 * xmin_max, self.data.max()), method="bounded")
-                
+
                 if not opt.success:
                     raise RuntimeError("Optimal xmax not found.")
-                
+
                 self.xmax = int(opt.x)
 
             elif xmin is None:
@@ -1100,7 +1100,7 @@ class PowerLaw(object):
 
         ax.loglog(x, y, ".", label="Data")
         ax.loglog(x, power_law, label=r"$\alpha = {:.2f}$".format(self.alpha))
-        ax.set_ylim(ymin=ymin)
+        ax.set_ylim(bottom=ymin)
 
         ax.axvline(self.xmin, color="y", linewidth=4, alpha=0.5, label="$x_{{min}} = {}$".format(self.xmin))
 
@@ -1197,3 +1197,10 @@ def montage(stack):
     reshaped_stack = np.rollaxis(reshaped_stack, 1, 3)
     # merge and return.
     return reshaped_stack.reshape(dy * ny, dx * nx)
+
+
+def latex_format_e(num, pre=2):
+    """Format a number for nice latex presentation, the number will *not* be enclosed in $"""
+    s = ("{:." + "{:d}".format(pre) + "e}").format(num)
+    fp, xp = s.split("e+")
+    return "{} \\times 10^{{{}}}".format(fp, int(xp))
