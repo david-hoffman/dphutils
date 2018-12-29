@@ -929,6 +929,8 @@ class PowerLaw(object):
                 best_arg = args[self.ks_statistics.argmin()]
                 # set internals
                 (self.C, self.alpha), self.xmin = best_arg
+                # estimate error (only valid for large n)
+                self.alpha_error = (self.alpha - 1) / np.sqrt(len(self.data[self.data >= self.xmin]))
             else:
                 self._fit_discrete(xmin)
                 self.ks_statistics = np.array([self._KS_test_discrete()])
@@ -1185,8 +1187,7 @@ def montage(stack):
     ntiles, ny, nx = stack.shape
     # Find the prime factor that makes the montage most square
     primes = find_prime_facs(ntiles)
-    idx = abs(primes - np.sqrt(ntiles)).argmin()
-    dx = primes[idx]
+    dx = primes[::2].prod()
     dy = ntiles // dx
     new_shape = dy, dx, ny, nx
     # sanity check
