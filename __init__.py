@@ -1184,20 +1184,31 @@ def find_prime_facs(n):
 def montage(stack):
     """Take a stack and a new shape and cread a montage"""
     # assume data is ordered as color, tiles, ny, nx
-    ntiles, ny, nx = stack.shape
+    ntiles, ny, nx = stack.shape[:3]
     # Find the prime factor that makes the montage most square
     primes = find_prime_facs(ntiles)
     dx = primes[::2].prod()
     dy = ntiles // dx
-    new_shape = dy, dx, ny, nx
+    new_shape = (dy, dx, ny, nx) + stack.shape[3:]
     # sanity check
     assert dy * dx == ntiles, "Number of tiles, {}, doesn't match montage dimensions ({}, {})".format(ntiles, dy, dx)
     # reshape the stack
     reshaped_stack = stack.reshape(new_shape)
     # align the tiles
-    reshaped_stack = np.rollaxis(reshaped_stack, 1, 3)
+    reshaped_stack = np.moveaxis(reshaped_stack, 1, 2)
     # merge and return.
-    return reshaped_stack.reshape(dy * ny, dx * nx)
+    return reshaped_stack.reshape((dy * ny, dx * nx) + stack.shape[3:])
+
+
+def square_montage(stack):
+    """Turn a 3D stack into a square montage"""
+    # calculate nearest square
+    new_num = int(np.ceil(np.sqrt(len(stack)))**2)
+    # if square return montage
+    if new_num == len(stack):
+        return montage(stack)
+    # add enough zeros to make square
+    return montage(np.concatenate((stack, [np.zeros(stack.shape[1:], dtype=stack.dtype)] * (new_num - len(stack)))))
 
 
 def latex_format_e(num, pre=2):
@@ -1205,3 +1216,17 @@ def latex_format_e(num, pre=2):
     s = ("{:." + "{:d}".format(pre) + "e}").format(num)
     fp, xp = s.split("e+")
     return "{} \\times 10^{{{}}}".format(fp, int(xp))
+
+
+def amira_bbox_str(*, bbox=None, resolution=None, shape=None, offset=None):
+    """Correctly calculates the bounding box and makes a string to be stuffed into
+    the image description tag of a tiff"""
+    if bbox is not None:
+        z0, z1, y0, y1, x0, x1 = bbox
+    else:
+        z0, y0, x0 = offset
+        z1, y1, x1 = np.asarray(resolution) * (np.asarray(shape) - 1) + offset
+
+    fmt_str = "BoundingBox {x0:} {x1:} {y0:} {y1:} {z0:} {z1:}"
+    fmt_dict = dict(z0=z0, z1=z1, y0=y0, y1=y1, x0=x0, x1=x1)
+    return fmt_str.format(**fmt_dict)
