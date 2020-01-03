@@ -7,6 +7,7 @@ from numba.types import intc, CPointer, float64, intp, voidptr
 from scipy import LowLevelCallable
 
 import platform
+
 if platform.system() == "Windows":
     raise RuntimeError("This doesn't work on Windows yet.")
 
@@ -20,6 +21,7 @@ def jit_filter_function(filter_function):
         values = carray(values_ptr, (len_values,), dtype=float64)
         result[0] = jitted_function(values)
         return 1
+
     return LowLevelCallable(wrapped.ctypes)
 
 
@@ -33,6 +35,7 @@ def jit_filter1d_function(filter_function):
         out_values = carray(out_values_ptr, (len_out,), dtype=float64)
         jitted_function(in_values, out_values)
         return 1
+
     return LowLevelCallable(wrapped.ctypes)
 
 

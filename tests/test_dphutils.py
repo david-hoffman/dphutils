@@ -1,17 +1,16 @@
 from nose.tools import *
 import numpy as np
-from numpy.testing import (assert_allclose, assert_almost_equal,
-                           assert_approx_equal)
+from numpy.testing import assert_allclose, assert_almost_equal, assert_approx_equal
 from itertools import product
 import unittest
 from scipy.signal import signaltools as sig
 from scipy.ndimage.filters import gaussian_filter
+
 # import the package to test
 from dphutils import *
 
 
 class TestFFTPad(unittest.TestCase):
-
     def setUp(self):
         pass
 
@@ -25,19 +24,19 @@ class TestFFTPad(unittest.TestCase):
         assert_equal(newshape, newdata.shape)
 
     def test_new_shape_one_size(self):
-        '''
+        """
         Make sure the new shape has the same dimensions when one is given
-        '''
+        """
         oldshape = (10, 20, 30)
         data = np.random.randn(*oldshape)
         newsize = 50
         newdata = fft_pad(data, newsize)
-        assert_equal((newsize, ) * newdata.ndim, newdata.shape)
+        assert_equal((newsize,) * newdata.ndim, newdata.shape)
 
     def test_new_shape_multiple(self):
-        '''
+        """
         Make sure the new shape has the same dimensions when one is given
-        '''
+        """
         oldshape = (10, 20, 30, 40)
         data = np.random.randn(*oldshape)
         newsize = (50, 40, 30, 100)
@@ -49,9 +48,9 @@ class TestFFTPad(unittest.TestCase):
         oldshape = np.random.randint(10, 200)
         newshape = np.random.randint(5, oldshape)
         data = np.ones(oldshape)
-        assert_equal(data.shape, (oldshape, ))
+        assert_equal(data.shape, (oldshape,))
         pad_data = fft_pad(data, newshape)
-        assert_equal(pad_data.shape, (newshape, ))
+        assert_equal(pad_data.shape, (newshape,))
 
     def test_right_position_cases(self):
         """make sure that center stays centered (for ffts)
@@ -63,13 +62,10 @@ class TestFFTPad(unittest.TestCase):
             (17, 35),  # odd -> odd
         )
         # same cases
-        same = (
-            (34, 34),  # odd -> odd
-            (35, 35),  # even -> even
-        )
+        same = ((34, 34), (35, 35))  # odd -> odd  # even -> even
         # try the cropping version too
         rev_cases = tuple((j, i) for i, j in cases)
-        for oldshape, newshape in (cases + same + rev_cases):
+        for oldshape, newshape in cases + same + rev_cases:
             data = np.zeros(oldshape)
             data[0] = 1
             data_centered = ifftshift(data)
@@ -84,7 +80,7 @@ class TestFFTPad(unittest.TestCase):
             oldshape = np.random.randint(10, 100, dims)
             newshape = np.random.randint(10, 100, dims)
             data = np.zeros(oldshape)
-            zero_loc = (0, ) * dims
+            zero_loc = (0,) * dims
             data[zero_loc] = 1
             data_centered = ifftshift(data)
             data_padded = fft_pad(data_centered, newshape)
@@ -183,6 +179,7 @@ def test_padding_slices():
     new_data = fft_pad(data, newshape)
     padding, slices = padding_slices(newshape, oldshape)
     assert np.all(data == new_data[slices])
+
 
 class TestFFTPad(unittest.TestCase):
     """This is not even close to testing edge cases"""

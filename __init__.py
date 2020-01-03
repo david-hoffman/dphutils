@@ -12,6 +12,7 @@ import numpy as np
 import scipy as sp
 import re
 import io
+import os
 import requests
 from skimage.external import tifffile as tif
 from scipy.optimize import minimize_scalar, minimize
@@ -31,23 +32,32 @@ import matplotlib.pyplot as plt
 
 try:
     import pyfftw
-    from pyfftw.interfaces.numpy_fft import (fftshift, ifftshift, fftn, ifftn,
-                                             rfftn, irfftn)
+    from pyfftw.interfaces.numpy_fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn
+
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
     FFTW = True
 except ImportError:
-    from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
-                           rfftn, irfftn)
+    from numpy.fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn
+
     FFTW = False
+
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 eps = np.finfo(float).eps
 
 
 def get_git(path="."):
     try:
         # we slice to remove trailing new line.
-        return subprocess.check_output(["git", "--git-dir=" + path + "/.git", "describe", "--long", "--always"]).decode()[:-1]
-    except subprocess.CalledProcessError:
+        cmd = ["git", "--git-dir=" + os.path.join(path, ".git"), "describe", "--long", "--always"]
+        return subprocess.check_output(cmd).decode()[:-1]
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.error(e)
+        logger.error(" ".join(cmd))
         return "Unknown"
 
 
@@ -55,7 +65,7 @@ def generate_meta_data():
     pass
 
 
-def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation='sum'):
+def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation="sum"):
     """
     Bins an ndarray in all axes based on the target shape, by summing or
         averaging.
@@ -90,13 +100,11 @@ def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation='sum'):
         ndarray = ndarray[crop]
     # proceed as before
     operation = operation.lower()
-    if operation not in {'sum', 'mean'}:
+    if operation not in {"sum", "mean"}:
         raise ValueError("Operation not supported.")
     if ndarray.ndim != len(new_shape):
-        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape,
-                                                           new_shape))
-    compression_pairs = [(d, c // d) for d, c in zip(new_shape,
-                                                     ndarray.shape)]
+        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape, new_shape))
+    compression_pairs = [(d, c // d) for d, c in zip(new_shape, ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]
     ndarray = ndarray.reshape(flattened)
     for i in range(len(new_shape)):
@@ -183,7 +191,7 @@ def radial_profile(data, center=None, binsize=1.0):
         # imaginary parts and return the complex sum.
         real_prof, real_std = radial_profile(np.real(data), center, binsize)
         imag_prof, imag_std = radial_profile(np.imag(data), center, binsize)
-        return real_prof + imag_prof * 1j, np.sqrt(real_std**2 + imag_std**2)
+        return real_prof + imag_prof * 1j, np.sqrt(real_std ** 2 + imag_std ** 2)
         # or do mag and phase
         # mag_prof, mag_std = radial_profile(np.abs(data), center, binsize)
         # phase_prof, phase_std = radial_profile(np.angle(data), center, binsize)
@@ -197,14 +205,14 @@ def radial_profile(data, center=None, binsize=1.0):
         # make sure center is an array.
         center = np.asarray(center)
     # calculate the radius from center
-    idx2 = idx - center[(Ellipsis, ) + (np.newaxis, ) * (data.ndim)]
-    r = np.sqrt(np.sum([i**2 for i in idx2], 0))
+    idx2 = idx - center[(Ellipsis,) + (np.newaxis,) * (data.ndim)]
+    r = np.sqrt(np.sum([i ** 2 for i in idx2], 0))
     # convert to int
     r = np.round(r / binsize).astype(np.int)
     # sum the values at equal r
     tbin = np.bincount(r.ravel(), data.ravel())
     # sum the squares at equal r
-    tbin2 = np.bincount(r.ravel(), (data**2).ravel())
+    tbin2 = np.bincount(r.ravel(), (data ** 2).ravel())
     # find how many equal r's there are
     nr = np.bincount(r.ravel())
     # calculate the radial mean
@@ -212,7 +220,7 @@ def radial_profile(data, center=None, binsize=1.0):
     # have NaN for binsize != 1
     radial_mean = tbin / nr
     # calculate the radial std
-    radial_std = np.sqrt(tbin2 / nr - radial_mean**2)
+    radial_std = np.sqrt(tbin2 / nr - radial_mean ** 2)
     # return them
     return radial_mean, radial_std
 
@@ -284,7 +292,7 @@ def slice_maker(xs, ws):
     return tuple(toreturn)
 
 
-def fft_pad(array, newshape=None, mode='median', **kwargs):
+def fft_pad(array, newshape=None, mode="median", **kwargs):
     """Pad an array to prep it for fft"""
     # pull the old shape
     oldshape = array.shape
@@ -307,13 +315,15 @@ def padding_slices(oldshape, newshape):
 
     Can be used to generate the slices needed to undo fft_pad above"""
     # generate pad widths from new shape
-    padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
-                    for o, n in zip(oldshape, newshape))
+    padding = tuple(
+        _calc_pad(o, n) if n is not None else _calc_pad(o, o) for o, n in zip(oldshape, newshape)
+    )
     # Make a crop list, if any of the padding is negative
     slices = tuple(_calc_crop(s1, s2) for s1, s2 in padding)
     # leave 0 pad width where it was cropped
     padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
     return padding, slices
+
 
 # def easy_rfft(data, axes=None):
 #     """utility method that includes fft shifting"""
@@ -390,6 +400,7 @@ def _calc_pad(oldnum, newnum):
 
 # If we have fftw installed than make a better fftconvolve
 if FFTW:
+
     def fftconvolve(in1, in2, mode="same", threads=1):
         """Same as above but with pyfftw added in"""
         in1 = np.asarray(in1)
@@ -404,8 +415,7 @@ if FFTW:
 
         s1 = np.array(in1.shape)
         s2 = np.array(in2.shape)
-        complex_result = (np.issubdtype(in1.dtype, complex) or
-                          np.issubdtype(in2.dtype, complex))
+        complex_result = np.issubdtype(in1.dtype, complex) or np.issubdtype(in2.dtype, complex)
         shape = s1 + s2 - 1
 
         # Check that input sizes are compatible with 'valid' mode
@@ -422,7 +432,7 @@ if FFTW:
             try:
                 sp1 = rfftn(in1, fshape, threads=threads)
                 sp2 = rfftn(in2, fshape, threads=threads)
-                ret = (irfftn(sp1 * sp2, fshape, threads=threads)[fslice].copy())
+                ret = irfftn(sp1 * sp2, fshape, threads=threads)[fslice].copy()
             finally:
                 if not sig._rfft_mt_safe:
                     sig._rfft_lock.release()
@@ -444,9 +454,9 @@ if FFTW:
         elif mode == "valid":
             return sig._centered(ret, s1 - s2 + 1)
         else:
-            raise ValueError("Acceptable mode flags are 'valid',"
-                             " 'same', or 'full'.")
-    #fftconvolve.__doc__ = "DPH Utils: " + sig.fftconvolve.__doc__
+            raise ValueError("Acceptable mode flags are 'valid'," " 'same', or 'full'.")
+
+    # fftconvolve.__doc__ = "DPH Utils: " + sig.fftconvolve.__doc__
 else:
     fftconvolve = sig.fftconvolve
 
@@ -472,16 +482,14 @@ def fftconvolve_fast(data, kernel, **kwargs):
     # pad out with reflection
     pad_data = fft_pad(data, fshape, "reflect")
     # calculate padding
-    padding = tuple(_calc_pad(o, n)
-                    for o, n in zip(data.shape, pad_data.shape))
+    padding = tuple(_calc_pad(o, n) for o, n in zip(data.shape, pad_data.shape))
     # so that we can calculate the cropping, maybe this should be integrated
     # into `fft_pad` ...
-    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None)
-                   for s, e in padding)
+    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None) for s, e in padding)
     if kernel.shape != pad_data.shape:
         # its been assumed that the background of the kernel has already been
         # removed and that the kernel has already been centered
-        kernel = fft_pad(kernel, pad_data.shape, mode='constant')
+        kernel = fft_pad(kernel, pad_data.shape, mode="constant")
     k_kernel = rfftn(ifftshift(kernel), pad_data.shape, **kwargs)
     k_data = rfftn(pad_data, pad_data.shape, **kwargs)
     convolve_data = irfftn(k_kernel * k_data, pad_data.shape, **kwargs)
@@ -507,17 +515,16 @@ def win_nd(size, win_func=sp.signal.hann, **kwargs):
         window function
     """
     ndim = len(size)
-    newshapes = tuple([
-        tuple([1 if i != j else k for i in range(ndim)])
-        for j, k in enumerate(size)])
+    newshapes = tuple(
+        [tuple([1 if i != j else k for i in range(ndim)]) for j, k in enumerate(size)]
+    )
 
     # Initialize to return
     toreturn = 1.0
 
     # cross product the 1D windows together
     for newshape in newshapes:
-        toreturn = toreturn * win_func(max(newshape), **kwargs
-                                       ).reshape(newshape)
+        toreturn = toreturn * win_func(max(newshape), **kwargs).reshape(newshape)
 
     # return
     return toreturn
@@ -536,10 +543,10 @@ def anscombe_inv(data):
 
     https://en.wikipedia.org/wiki/Anscombe_transform
     """
-    part0 = 1 / 4 * data**2
+    part0 = 1 / 4 * data ** 2
     part1 = 1 / 4 * np.sqrt(3 / 2) / data
-    part2 = -11 / 8 / (data**2)
-    part3 = 5 / 8 * np.sqrt(3 / 2) / (data**3)
+    part2 = -11 / 8 / (data ** 2)
+    part3 = 5 / 8 * np.sqrt(3 / 2) / (data ** 3)
     return part0 + part1 + part2 + part3 - 1 / 8
 
 
@@ -571,8 +578,7 @@ def fft_gaussian_filter(img, sigma):
     padding = tuple(_calc_pad(o, n) for o, n in zip(img.shape, pad_img.shape))
     # so that we can calculate the cropping, maybe this should be integrated
     # into `fft_pad` ...
-    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None)
-                   for s, e in padding)
+    fslice = tuple(slice(s, -e) if e != 0 else slice(s, None) for s, e in padding)
     # fourier transfrom and apply the filter
     kimg = rfftn(pad_img, fshape)
     filt_kimg = fourier_gaussian(kimg, sigma, pad_img.shape[-1])
@@ -589,7 +595,7 @@ def multi_exp(xdata, *args):
         offset = 0
     res = np.ones_like(xdata, dtype=float) * offset
     for i in range(0, len(args) - odd, 2):
-        a, k = args[i:i + 2]
+        a, k = args[i : i + 2]
         res += a * np.exp(-k * xdata)
     return res
 
@@ -601,7 +607,7 @@ def multi_exp_jac(xdata, *args):
     tostack = []
 
     for i in range(0, len(args) - odd, 2):
-        a, k = args[i:i + 2]
+        a, k = args[i : i + 2]
         tostack.append(np.exp(-k * xdata))
         tostack.append(-a * xdata * tostack[-1])
 
@@ -685,8 +691,12 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True, **kwargs):
         # we can't fit data with less than 4 points
         # make guesses
         if components > 1:
-            split_points = np.logspace(np.log(xdata_fixed[xdata_fixed > 0].min()), np.log(xdata_fixed.max()),
-                                       components + 1, base=np.e)
+            split_points = np.logspace(
+                np.log(xdata_fixed[xdata_fixed > 0].min()),
+                np.log(xdata_fixed.max()),
+                components + 1,
+                base=np.e,
+            )
             # convert to indices
             split_idxs = np.searchsorted(xdata_fixed, split_points)
             # add endpoints, make sure we don't have 0 twice
@@ -704,7 +714,9 @@ def multi_exp_fit(data, xdata=None, components=None, offset=True, **kwargs):
             pguess = pguess[:-1]
         # The jacobian actually slows down the fitting my guess is there
         # aren't generally enough points to make it worthwhile
-        return curve_fit(multi_exp, xdata_fixed, data_fixed, p0=pguess, jac=multi_exp_jac, **kwargs)
+        return curve_fit(
+            multi_exp, xdata_fixed, data_fixed, p0=pguess, jac=multi_exp_jac, **kwargs
+        )
     else:
         raise RuntimeError("Not enough good points to fit.")
 
@@ -779,7 +791,7 @@ def power_law_jac(xdata, *args):
     tostack = []
     lx = np.log(xdata)
     for i in range(0, len(args) - odd, 2):
-        a, b = args[i:i + 2]
+        a, b = args[i : i + 2]
         # dydai
         tostack.append(np.exp(-b * lx))
         # dydki
@@ -814,6 +826,7 @@ def imread_bioformats(path):
     import bioformats
     import gc
     import itertools
+
     # start the jave VM with the appropriate classes loaded
     javabridge.start_vm(class_path=bioformats.JARS)
     # init the reader
@@ -901,7 +914,9 @@ class PowerLaw(object):
                     self.ks_statistics = power_sub.ks_statistics
                     return power_sub.ks_statistics.min()
 
-                opt = minimize_scalar(func, bounds=(2 * xmin_max, self.data.max()), method="bounded")
+                opt = minimize_scalar(
+                    func, bounds=(2 * xmin_max, self.data.max()), method="bounded"
+                )
 
                 if not opt.success:
                     raise RuntimeError("Optimal xmax not found.")
@@ -911,7 +926,9 @@ class PowerLaw(object):
             elif xmin is None:
                 # this is a hacky way of doing things, just
                 # try fitting multiple xmin
-                args = [(self._fit_discrete(x), x) for x in range(1, min(xmin_max, self.data.max()))]
+                args = [
+                    (self._fit_discrete(x), x) for x in range(1, min(xmin_max, self.data.max()))
+                ]
 
                 # utility function to test KS
                 def KS_test(alpha, xmin):
@@ -930,7 +947,9 @@ class PowerLaw(object):
                 # set internals
                 (self.C, self.alpha), self.xmin = best_arg
                 # estimate error (only valid for large n)
-                self.alpha_error = (self.alpha - 1) / np.sqrt(len(self.data[self.data >= self.xmin]))
+                self.alpha_error = (self.alpha - 1) / np.sqrt(
+                    len(self.data[self.data >= self.xmin])
+                )
             else:
                 self._fit_discrete(xmin)
                 self.ks_statistics = np.array([self._KS_test_discrete()])
@@ -1001,7 +1020,7 @@ class PowerLaw(object):
         x = np.arange(len(y))
 
         # calculate the normalization constant from xmin onwards
-        N = y[self.xmin:].sum()
+        N = y[self.xmin :].sum()
         y = y / N
         return x, y, N
 
@@ -1013,7 +1032,7 @@ class PowerLaw(object):
         """Kolmogorov–Smirnov or KS statistic"""
         x, y, N = self._convert_to_probability_discrete()
         # clip at xmin
-        x, y = x[self.xmin:], y[self.xmin:]
+        x, y = x[self.xmin :], y[self.xmin :]
         assert np.allclose(y.sum(), 1), "y not normalized {}, xmin = {}".format(y, self.xmin)
         # caculate the cumulative distribution functions
         expt_cdf = y.cumsum()
@@ -1104,10 +1123,22 @@ class PowerLaw(object):
         ax.loglog(x, power_law, label=r"$\alpha = {:.2f}$".format(self.alpha))
         ax.set_ylim(bottom=ymin)
 
-        ax.axvline(self.xmin, color="y", linewidth=4, alpha=0.5, label="$x_{{min}} = {}$".format(self.xmin))
+        ax.axvline(
+            self.xmin,
+            color="y",
+            linewidth=4,
+            alpha=0.5,
+            label="$x_{{min}} = {}$".format(self.xmin),
+        )
 
         try:
-            ax.axvline(self.xmax, color="y", linewidth=4, alpha=0.5, label="$x_{{max}} = {}$".format(self.xmax))
+            ax.axvline(
+                self.xmax,
+                color="y",
+                linewidth=4,
+                alpha=0.5,
+                label="$x_{{max}} = {}$".format(self.xmax),
+            )
         except AttributeError:
             pass
 
@@ -1160,7 +1191,7 @@ def negloglikelihoodZTNB(args, x):
 def fit_ztnb(data, x0=(0.5, 0.5)):
     """Fit the data assuming it follows a zero-truncated Negative Binomial model"""
 
-    opt = minimize(negloglikelihoodZTNB, x0, (data, ), bounds=((0, np.inf), (0, np.inf)))
+    opt = minimize(negloglikelihoodZTNB, x0, (data,), bounds=((0, np.inf), (0, np.inf)))
 
     if not opt.success:
         raise RuntimeError("Fitting zero-truncated negative binomial", opt)
@@ -1191,7 +1222,9 @@ def montage(stack):
     dy = ntiles // dx
     new_shape = (dy, dx, ny, nx) + stack.shape[3:]
     # sanity check
-    assert dy * dx == ntiles, "Number of tiles, {}, doesn't match montage dimensions ({}, {})".format(ntiles, dy, dx)
+    assert (
+        dy * dx == ntiles
+    ), "Number of tiles, {}, doesn't match montage dimensions ({}, {})".format(ntiles, dy, dx)
     # reshape the stack
     reshaped_stack = stack.reshape(new_shape)
     # align the tiles
@@ -1203,12 +1236,16 @@ def montage(stack):
 def square_montage(stack):
     """Turn a 3D stack into a square montage"""
     # calculate nearest square
-    new_num = int(np.ceil(np.sqrt(len(stack)))**2)
+    new_num = int(np.ceil(np.sqrt(len(stack))) ** 2)
     # if square return montage
     if new_num == len(stack):
         return montage(stack)
     # add enough zeros to make square
-    return montage(np.concatenate((stack, [np.zeros(stack.shape[1:], dtype=stack.dtype)] * (new_num - len(stack)))))
+    return montage(
+        np.concatenate(
+            (stack, [np.zeros(stack.shape[1:], dtype=stack.dtype)] * (new_num - len(stack)))
+        )
+    )
 
 
 def latex_format_e(num, pre=2):

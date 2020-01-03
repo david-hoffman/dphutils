@@ -28,9 +28,11 @@ References
 from __future__ import division, print_function
 
 import numpy as np
+
 try:
     from pyfftw.interfaces.numpy_fft import fftn, ifftn, rfftn, irfftn
     import pyfftw
+
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
@@ -343,8 +345,9 @@ def image_quad_norm(inarray):
     """
     # If there is a Hermitian symmetry
     if inarray.shape[-1] != inarray.shape[-2]:
-        return (2 * np.sum(np.sum(np.abs(inarray) ** 2, axis=-1), axis=-1) -
-                np.sum(np.abs(inarray[..., 0]) ** 2, axis=-1))
+        return 2 * np.sum(np.sum(np.abs(inarray) ** 2, axis=-1), axis=-1) - np.sum(
+            np.abs(inarray[..., 0]) ** 2, axis=-1
+        )
     else:
         return np.sum(np.sum(np.abs(inarray) ** 2, axis=-1), axis=-1)
 
@@ -405,9 +408,7 @@ def ir2tf(imp_resp, shape, dim=None, is_real=True):
     # problem. Work with odd and even size.
     for axis, axis_size in enumerate(imp_resp.shape):
         if axis >= imp_resp.ndim - dim:
-            irpadded = np.roll(irpadded,
-                               shift=-int(np.floor(axis_size / 2)),
-                               axis=axis)
+            irpadded = np.roll(irpadded, shift=-int(np.floor(axis_size / 2)), axis=axis)
     if is_real:
         return rfftn(irpadded, axes=range(-dim, 0))
     else:
@@ -447,12 +448,9 @@ def laplacian(ndim, shape, is_real=True):
     """
     impr = np.zeros([3] * ndim)
     for dim in range(ndim):
-        idx = tuple([slice(1, 2)] * dim +
-                    [slice(None)] +
-                    [slice(1, 2)] * (ndim - dim - 1))
-        impr[idx] = np.array([-1.0,
-                              0.0,
-                              -1.0]).reshape([-1 if i == dim else 1
-                                              for i in range(ndim)])
+        idx = tuple([slice(1, 2)] * dim + [slice(None)] + [slice(1, 2)] * (ndim - dim - 1))
+        impr[idx] = np.array([-1.0, 0.0, -1.0]).reshape(
+            [-1 if i == dim else 1 for i in range(ndim)]
+        )
     impr[([slice(1, 2)] * ndim)] = 2.0 * ndim
     return ir2tf(impr, shape, is_real=is_real), impr

@@ -22,7 +22,7 @@ from numpy import linalg as la
 import scipy.optimize
 import logging
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def _chi2_ls(f):
@@ -32,7 +32,7 @@ def _chi2_ls(f):
 
     Minimizing this will maximize the likelihood for a
     data model with gaussian deviates."""
-    return 0.5 * (f**2).sum(0)
+    return 0.5 * (f ** 2).sum(0)
 
 
 def _update_ls(x0, f, Dfun):
@@ -67,7 +67,7 @@ def _chi2_mle(f):
 
     # make sure to change nans and infs to nums
     with np.errstate(invalid="ignore", divide="ignore"):
-        part2 = - (y * np.log(f / y))
+        part2 = -(y * np.log(f / y))
     part2[~np.isfinite(part2)] = 0.0
     part2 = part2.sum(0)
 
@@ -120,9 +120,11 @@ def _wrap_func_mle(func, xdata, ydata, transform):
     # add non-negativity constraint to data
     ydata_nn = _ensure_positive(ydata)
     if transform is None:
+
         def func_wrapped(params):
             # return function and data
             return _ensure_positive(func(xdata, *params)), ydata_nn
+
     elif transform.ndim == 1:
         raise NotImplementedError
     else:
@@ -140,8 +142,10 @@ def _wrap_func_mle(func, xdata, ydata, transform):
 
 def _wrap_jac_mle(jac, xdata, transform):
     if transform is None:
+
         def jac_wrapped(params):
             return jac(xdata, *params)
+
     elif transform.ndim == 1:
         raise NotImplementedError
     else:
@@ -152,11 +156,15 @@ def _wrap_jac_mle(jac, xdata, transform):
 def _wrap_func_ls(func, xdata, ydata, transform):
     """This is the cost function as defined by Transtrum and Sethna"""
     if transform is None:
+
         def func_wrapped(params):
             return func(xdata, *params) - ydata
+
     elif transform.ndim == 1:
+
         def func_wrapped(params):
             return transform * (func(xdata, *params) - ydata)
+
     else:
         # Chisq = (y - yd)^T C^{-1} (y-yd)
         # transform = L such that C = L L^T
@@ -168,19 +176,26 @@ def _wrap_func_ls(func, xdata, ydata, transform):
         # and minimize (y-yd)'^T (y-yd)'
         def func_wrapped(params):
             return solve_triangular(transform, func(xdata, *params) - ydata, lower=True)
+
     return func_wrapped
 
 
 def _wrap_jac_ls(jac, xdata, transform):
     if transform is None:
+
         def jac_wrapped(params):
             return jac(xdata, *params)
+
     elif transform.ndim == 1:
+
         def jac_wrapped(params):
             return transform[:, np.newaxis] * np.asarray(jac(xdata, *params))
+
     else:
+
         def jac_wrapped(params):
             return solve_triangular(transform, np.asarray(jac(xdata, *params)), lower=True)
+
     return jac_wrapped
 
 
@@ -196,10 +211,22 @@ def make_lambda(j, d0):
     return np.diag([max(ds[i], ds[i - 1]) for i in range(1, len(ds))])
 
 
-def lm(func, x0, args=(), Dfun=None, full_output=False,
-       col_deriv=True, ftol=1.49012e-8, xtol=1.49012e-8,
-       gtol=0.0, maxfev=None, epsfcn=None, factor=100, diag=None,
-       method="ls"):
+def lm(
+    func,
+    x0,
+    args=(),
+    Dfun=None,
+    full_output=False,
+    col_deriv=True,
+    ftol=1.49012e-8,
+    xtol=1.49012e-8,
+    gtol=0.0,
+    maxfev=None,
+    epsfcn=None,
+    factor=100,
+    diag=None,
+    method="ls",
+):
     """A more thorough implementation of levenburg-marquet
     for gaussian Noise
     ::
@@ -273,30 +300,50 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             maxfev = 100 * (n + 1)
 
     # this is stolen from scipy.leastsq so it isn't fully implemented
-    errors = {0: ["Improper input parameters.", TypeError],
-              1: ["Both actual and predicted relative reductions "
-                  "in the sum of squares are at most {}".format(ftol), None],
-              2: ["The relative error between two consecutive "
-                  "iterates is at most {}".format(xtol), None],
-              3: ["Both actual and predicted relative reductions in "
-                  "the sum of squares\n  are at most %f and the "
-                  "relative error between two consecutive "
-                  "iterates is at \n  most %f" % (ftol, xtol), None],
-              4: ["The cosine of the angle between func(x) and any "
-                  "column of the\n  Jacobian is at most %f in "
-                  "absolute value" % gtol, None],
-              5: ["Number of calls to function has reached "
-                  "maxfev = %d." % maxfev, ValueError],
-              6: ["ftol=%f is too small, no further reduction "
-                  "in the sum of squares\n  is possible.""" % ftol,
-                  ValueError],
-              7: ["xtol=%f is too small, no further improvement in "
-                  "the approximate\n  solution is possible." % xtol,
-                  ValueError],
-              8: ["gtol=%f is too small, func(x) is orthogonal to the "
-                  "columns of\n  the Jacobian to machine "
-                  "precision." % gtol, ValueError],
-              'unknown': ["Unknown error.", TypeError]}
+    errors = {
+        0: ["Improper input parameters.", TypeError],
+        1: [
+            "Both actual and predicted relative reductions "
+            "in the sum of squares are at most {}".format(ftol),
+            None,
+        ],
+        2: [
+            "The relative error between two consecutive " "iterates is at most {}".format(xtol),
+            None,
+        ],
+        3: [
+            "Both actual and predicted relative reductions in "
+            "the sum of squares\n  are at most %f and the "
+            "relative error between two consecutive "
+            "iterates is at \n  most %f" % (ftol, xtol),
+            None,
+        ],
+        4: [
+            "The cosine of the angle between func(x) and any "
+            "column of the\n  Jacobian is at most %f in "
+            "absolute value" % gtol,
+            None,
+        ],
+        5: ["Number of calls to function has reached " "maxfev = %d." % maxfev, ValueError],
+        6: [
+            "ftol=%f is too small, no further reduction "
+            "in the sum of squares\n  is possible."
+            "" % ftol,
+            ValueError,
+        ],
+        7: [
+            "xtol=%f is too small, no further improvement in "
+            "the approximate\n  solution is possible." % xtol,
+            ValueError,
+        ],
+        8: [
+            "gtol=%f is too small, func(x) is orthogonal to the "
+            "columns of\n  the Jacobian to machine "
+            "precision." % gtol,
+            ValueError,
+        ],
+        "unknown": ["Unknown error.", TypeError],
+    }
 
     if maxfev is None:
         maxfev = 100 * (len(x0) + 1)
@@ -314,6 +361,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
 
     # set up update and chi2 for use
     if method == "ls":
+
         def update(x0, f):
             return _update_ls(x0, f, Dfun)
 
@@ -321,6 +369,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             return _chi2_ls(f)
 
     elif method == "mle":
+
         def update(x0, f):
             return _update_mle(x0, f, Dfun)
 
@@ -439,7 +488,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             try:
                 raise errors[info][1](errors[info][0])
             except KeyError:
-                raise errors['unknown'][1](errors['unknown'][0])
+                raise errors["unknown"][1](errors["unknown"][0])
 
     errmsg = errors[info][0]
     logger.debug(errmsg)
@@ -451,9 +500,19 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
         return popt, cov_x
 
 
-def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
-              check_finite=True, bounds=(-np.inf, np.inf), method=None,
-              jac=None, **kwargs):
+def curve_fit(
+    f,
+    xdata,
+    ydata,
+    p0=None,
+    sigma=None,
+    absolute_sigma=False,
+    check_finite=True,
+    bounds=(-np.inf, np.inf),
+    method=None,
+    jac=None,
+    **kwargs
+):
     """
     Use non-linear least squares to fit a function, f, to data.
     Assumes ``ydata = poisson(f(xdata, *params))``
@@ -533,16 +592,17 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         `least_squares` otherwise."""
 
     # fix kwargs
-    return_full = kwargs.pop('full_output', False)
-    can_full_output = method not in {'trf', 'dogbox'} and np.array_equal(bounds, (-np.inf, np.inf))
+    return_full = kwargs.pop("full_output", False)
+    can_full_output = method not in {"trf", "dogbox"} and np.array_equal(bounds, (-np.inf, np.inf))
 
-    if method in {'lm', 'trf', 'dogbox', None}:
+    if method in {"lm", "trf", "dogbox", None}:
         if can_full_output:
-            kwargs['full_output'] = return_full
+            kwargs["full_output"] = return_full
 
-        res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
-                                       check_finite, bounds, method, jac, **kwargs)
-        
+        res = scipy.optimize.curve_fit(
+            f, xdata, ydata, p0, sigma, absolute_sigma, check_finite, bounds, method, jac, **kwargs
+        )
+
         # user has requested that full_output be returned, but the method
         # isn't capable, fill in the blanks.
         if return_full and not can_full_output:
@@ -550,7 +610,7 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         else:
             return res
 
-    elif method == 'ls':
+    elif method == "ls":
         _wrap_func = _wrap_func_ls
         _wrap_jac = _wrap_jac_ls
     elif method == "mle":
@@ -571,8 +631,9 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         raise NotImplementedError("You need a Jacobian")
 
     # initialize p0 with standard LM
-    res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
-                                   check_finite, bounds, None, jac, **kwargs)
+    res = scipy.optimize.curve_fit(
+        f, xdata, ydata, p0, sigma, absolute_sigma, check_finite, bounds, None, jac, **kwargs
+    )
 
     # grab p0
     logger.debug("Initialized p0")
@@ -598,14 +659,14 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
 
     res = lm(func, p0, Dfun=jac, full_output=1, method=method, **kwargs)
     popt, pcov, infodict, errmsg, info = res
-    cost = np.sum(infodict['fvec'] ** 2)
+    cost = np.sum(infodict["fvec"] ** 2)
 
     # Do Moore-Penrose inverse discarding zero singular values.
-    _, s, VT = la.svd(infodict['fjac'], full_matrices=False)
-    threshold = np.finfo(float).eps * max(infodict['fjac'].shape) * s[0]
+    _, s, VT = la.svd(infodict["fjac"], full_matrices=False)
+    threshold = np.finfo(float).eps * max(infodict["fjac"].shape) * s[0]
     s = s[s > threshold]
-    VT = VT[:s.size]
-    pcov = np.dot(VT.T / s**2, VT)
+    VT = VT[: s.size]
+    pcov = np.dot(VT.T / s ** 2, VT)
 
     if info not in [1, 2, 3, 4]:
         raise RuntimeError("Optimal parameters not found: " + errmsg)
