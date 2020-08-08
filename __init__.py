@@ -15,6 +15,7 @@ import io
 import os
 import requests
 from skimage.external import tifffile as tif
+from scipy.fftpack.helper import next_fast_len
 from scipy.optimize import minimize_scalar, minimize
 from scipy.ndimage.fourier import fourier_gaussian
 from scipy.ndimage._ni_support import _normalize_sequence
@@ -23,6 +24,7 @@ from scipy.special import zeta
 from scipy.stats import nbinom
 
 from .lm import curve_fit
+from .rolling_ball import rolling_ball_filter
 
 import tqdm
 
@@ -166,7 +168,7 @@ def scale_uint16(data):
 def radial_profile(data, center=None, binsize=1.0):
     """Take the radial average of a 2D data array
 
-    Taken from http://stackoverflow.com/a/21242776/5030014
+    Adapted from http://stackoverflow.com/a/21242776/5030014
 
     Parameters
     ----------
@@ -174,11 +176,15 @@ def radial_profile(data, center=None, binsize=1.0):
         the 2D array for which you want to calculate the radial average
     center : sequence
         the center about which you want to calculate the radial average
+    binsize : sequence
+        Size of radial bins, numbers less than one have questionable utility
 
     Returns
     -------
-    radialprofile : ndarray
+    radial_mean : ndarray
         a 1D radial average of data
+    radial_std : ndarray
+        a 1D radial standard deviation of data
 
     Examples
     --------
@@ -298,7 +304,7 @@ def fft_pad(array, newshape=None, mode="median", **kwargs):
     oldshape = array.shape
     if newshape is None:
         # update each dimension to a 5-smooth hamming number
-        newshape = tuple(sig.fftpack.helper.next_fast_len(n) for n in oldshape)
+        newshape = tuple(next_fast_len(n) for n in oldshape)
     else:
         if isinstance(newshape, int):
             newshape = tuple(newshape for n in oldshape)
@@ -424,7 +430,7 @@ if FFTW:
             in1, s1, in2, s2 = in2, s2, in1, s1
 
         # Speed up FFT by padding to optimal size for FFTPACK
-        fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+        fshape = [next_fast_len(int(d)) for d in shape]
         fslice = tuple([slice(0, int(sz)) for sz in shape])
         # Pre-1.9 NumPy FFT routines are not threadsafe.  For older NumPys, make
         # sure we only call rfftn/irfftn from one thread at a time.
@@ -478,7 +484,7 @@ def fftconvolve_fast(data, kernel, **kwargs):
     # find maximum dimensions
     maxshape = np.max((dshape, kshape), 0)
     # calculate a nice shape
-    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in maxshape]
+    fshape = [next_fast_len(int(d)) for d in maxshape]
     # pad out with reflection
     pad_data = fft_pad(data, fshape, "reflect")
     # calculate padding
@@ -571,7 +577,7 @@ def fft_gaussian_filter(img, sigma):
     # s2 = np.array([int(s * 4) for s in _normalize_sequence(sigma, img.ndim)])
     shape = s1  # + s2 - 1
     # calculate a nice shape
-    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+    fshape = [next_fast_len(int(d)) for d in shape]
     # pad out with reflection
     pad_img = fft_pad(img, fshape, "reflect")
     # calculate the padding
@@ -1267,3 +1273,35 @@ def amira_bbox_str(*, bbox=None, resolution=None, shape=None, offset=None):
     fmt_str = "BoundingBox {x0:} {x1:} {y0:} {y1:} {z0:} {z1:}"
     fmt_dict = dict(z0=z0, z1=z1, y0=y0, y1=y1, x0=x0, x1=x1)
     return fmt_str.format(**fmt_dict)
+
+
+def localize_peak(data):
+    """Small utility function to localize a peak center. Assumes passed data has
+    peak at center and that data.shape is odd and symmetric. Then fits a
+    parabola through each line passing through the center. This is optimized
+    for FFT data which has a non-circularly symmetric shaped peaks.
+    """
+    # make sure passed data is symmetric along all dimensions
+    assert len(set(data.shape)) == 1, "data.shape = {}".format(data.shape)
+    # pull center location
+    center = data.shape[0] // 2
+    # generate the fitting lines
+    my_pat_fft_suby = data[:, center]
+    my_pat_fft_subx = data[center, :]
+    # fit along lines, consider the center to be 0
+    x = np.arange(data.shape[0]) - center
+    xfit = np.polyfit(x, my_pat_fft_subx, 2)
+    yfit = np.polyfit(x, my_pat_fft_suby, 2)
+    # calculate center of each parabola
+    x0 = -xfit[1] / (2 * xfit[0])
+    y0 = -yfit[1] / (2 * yfit[0])
+    # NOTE: comments below may be useful later.
+    # save fits as poly functions
+    # ypoly = np.poly1d(yfit)
+    # xpoly = np.poly1d(xfit)
+    # peak_value = ypoly(y0) / ypoly(0) * xpoly(x0)
+    # #
+    # assert np.isclose(peak_value,
+    #                   xpoly(x0) / xpoly(0) * ypoly(y0))
+    # return center
+    return y0, x0
