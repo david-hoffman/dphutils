@@ -105,7 +105,7 @@ def bin_ndarray(ndarray, new_shape=None, bin_size=None, operation="sum"):
     if operation not in {"sum", "mean"}:
         raise ValueError("Operation not supported.")
     if ndarray.ndim != len(new_shape):
-        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape, new_shape))
+        raise ValueError(f"Shape mismatch: {ndarray.shape} -> {new_shape}")
     compression_pairs = [(d, c // d) for d, c in zip(new_shape, ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]
     ndarray = ndarray.reshape(flattened)
@@ -279,7 +279,7 @@ def slice_maker(xs, ws):
     if not np.isrealobj((xs, ws)):
         raise TypeError("`slice_maker` only accepts real input")
     if np.any(ws < 0):
-        raise ValueError("width cannot be negative, width = {}".format(ws))
+        raise ValueError(f"width cannot be negative, width = {ws}")
     # ensure integers
     xs = np.rint(xs).astype(int)
     ws = np.rint(ws).astype(int)
@@ -772,8 +772,8 @@ def power_percentile_inv(x0, popt, xmin=1):
 def power_intercept(popt, value=1):
     """At what x value does the function reach value"""
     a, b = popt
-    assert a > 0, "a = {}".format(value)
-    assert value > 0, "value = {}".format(value)
+    assert a > 0, f"a = {value}"
+    assert value > 0, f"value = {value}"
     return (a / value) ** (1 / b)
 
 
@@ -1039,7 +1039,7 @@ class PowerLaw(object):
         x, y, N = self._convert_to_probability_discrete()
         # clip at xmin
         x, y = x[self.xmin :], y[self.xmin :]
-        assert np.allclose(y.sum(), 1), "y not normalized {}, xmin = {}".format(y, self.xmin)
+        assert np.allclose(y.sum(), 1), f"y not normalized {y}, xmin = {self.xmin}"
         # caculate the cumulative distribution functions
         expt_cdf = y.cumsum()
         power_law = self._power_law_fit_discrete(x)
@@ -1230,7 +1230,7 @@ def montage(stack):
     # sanity check
     assert (
         dy * dx == ntiles
-    ), "Number of tiles, {}, doesn't match montage dimensions ({}, {})".format(ntiles, dy, dx)
+    ), f"Number of tiles, {ntiles}, doesn't match montage dimensions ({dy}, {dx})"
     # reshape the stack
     reshaped_stack = stack.reshape(new_shape)
     # align the tiles
@@ -1282,7 +1282,7 @@ def localize_peak(data):
     for FFT data which has a non-circularly symmetric shaped peaks.
     """
     # make sure passed data is symmetric along all dimensions
-    assert len(set(data.shape)) == 1, "data.shape = {}".format(data.shape)
+    assert len(set(data.shape)) == 1, f"data.shape = {data.shape}"
     # pull center location
     center = data.shape[0] // 2
     # generate the fitting lines
